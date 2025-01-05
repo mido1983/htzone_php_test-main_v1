@@ -6,22 +6,122 @@ try {
     
     // Get and store categories
     echo "<h2>Fetching and storing categories...</h2>";
-    $categories = $api->getCategories();
+    $result = $api->getCategories();
+    
+    echo "<div style='background: #e8f5e9; padding: 10px; margin: 10px 0;'>";
+    echo "<h3>Storage Results:</h3>";
+    echo "Successfully stored {$result['stored_count']} categories in database<br>";
     
     // Verify database storage
     $db = Database::getInstance()->getConnection();
-    $result = $db->query("SELECT COUNT(*) as count FROM categories");
-    $count = $result->fetch_assoc()['count'];
     
-    echo "<div style='background: #e8f5e9; padding: 10px; margin: 10px 0;'>";
-    echo "Successfully stored {$count} categories in database";
+    // Show all categories from database
+    $dbResult = $db->query("SELECT * FROM categories");
+    echo "<h3>Categories in Database:</h3>";
+    echo "<table border='1' style='width: 100%; margin-top: 10px;'>";
+    echo "<tr>
+            <th>ID</th>
+            <th>Title</th>
+            <th>Parent Title</th>
+            <th>Group Title</th>
+            <th>Action</th>
+        </tr>";
+    
+    while ($row = $dbResult->fetch_assoc()) {
+        echo "<tr>";
+        echo "<td>" . htmlspecialchars($row['category_id']) . "</td>";
+        echo "<td>" . htmlspecialchars($row['title']) . "</td>";
+        echo "<td>" . htmlspecialchars($row['parent_title']) . "</td>";
+        echo "<td>" . htmlspecialchars($row['group_title']) . "</td>";
+        echo "<td><a href='?category=" . $row['category_id'] . "'>View Items</a></td>";
+        echo "</tr>";
+    }
+    echo "</table>";
     echo "</div>";
     
-    // Debug output
-    echo "<pre>";
-    echo "<h3>Categories from API:</h3>";
-    print_r($categories);
-    echo "</pre>";
+    // If category is selected, show items
+    if (isset($_GET['category'])) {
+        $categoryId = (int)$_GET['category'];
+        echo "<h2>Fetching data for category {$categoryId}...</h2>";
+        
+        // Get both regular items and sub-category items
+        $items = $api->getItems($categoryId);
+        $subCategory = $api->getSubCategory($categoryId);
+        
+        // Debug Sub-Category Response
+        echo "<div style='background: #f8f9fa; padding: 10px; margin: 10px 0; border: 1px solid #dee2e6;'>";
+        echo "<h3>Sub-Category Response:</h3>";
+        echo "<pre style='max-height: 300px; overflow: auto;'>";
+        if (isset($subCategory['api_data']) && is_array($subCategory['api_data'])) {
+            print_r($subCategory['api_data']);
+        } else {
+            echo "No sub-category data available";
+        }
+        echo "</pre>";
+        echo "</div>";
+        
+        // Debug Items Response
+        echo "<div style='background: #f8f9fa; padding: 10px; margin: 10px 0; border: 1px solid #dee2e6;'>";
+        echo "<h3>Items Response:</h3>";
+        echo "<pre style='max-height: 300px; overflow: auto;'>";
+        if (isset($items['api_data']) && is_array($items['api_data'])) {
+            print_r($items['api_data']);
+        } else {
+            echo "No items data available";
+        }
+        echo "</pre>";
+        echo "</div>";
+        
+        // Show storage results
+        echo "<div style='background: #e8f5e9; padding: 10px; margin: 10px 0;'>";
+        echo "<h3>Storage Results:</h3>";
+        echo "<ul>";
+        echo "<li>Regular items stored: {$items['stored_count']}</li>";
+        echo "<li>Sub-category items stored: {$subCategory['stored_count']}</li>";
+        echo "</ul>";
+        
+        // Show items from database
+        $itemsResult = $db->query("SELECT * FROM items WHERE category_id = {$categoryId}");
+        $totalItems = $itemsResult->num_rows;
+        
+        echo "<h3>Items in Database ({$totalItems} total):</h3>";
+        echo "<div class='row'>";
+        
+        while ($item = $itemsResult->fetch_assoc()) {
+            echo "<div class='col-md-4 mb-4'>";
+            echo "<div class='card'>";
+            if (!empty($item['image_url'])) {
+                echo "<img src='" . htmlspecialchars($item['image_url']) . "' class='card-img-top' alt='" . htmlspecialchars($item['title']) . "'>";
+            }
+            echo "<div class='card-body'>";
+            echo "<h5 class='card-title'>" . htmlspecialchars($item['title']) . "</h5>";
+            
+            // Handle description display
+            if (!empty($item['description'])) {
+                echo "<p class='card-text'>";
+                // Split description by newlines and display as bullet points if multiple lines
+                $descLines = explode("\n", $item['description']);
+                if (count($descLines) > 1) {
+                    echo "<ul class='list-unstyled mb-2'>";
+                    foreach ($descLines as $line) {
+                        if (!empty(trim($line))) {
+                            echo "<li>• " . htmlspecialchars(trim($line)) . "</li>";
+                        }
+                    }
+                    echo "</ul>";
+                } else {
+                    echo htmlspecialchars($item['description']);
+                }
+                echo "</p>";
+            }
+            
+            echo "<p class='card-text'><strong>Price: ₪" . number_format($item['price'], 2) . "</strong></p>";
+            echo "</div></div></div>";
+        }
+        
+        echo "</div>";
+        echo "</div>";
+    }
     
 } catch (Exception $e) {
     echo "<div style='color: red; padding: 20px; background: #ffebee; border: 1px solid #ffcdd2;'>";
