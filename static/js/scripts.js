@@ -88,28 +88,47 @@ $(document).ready(function() {
         
         categories.forEach(category => {
             const col = $('<div>').addClass('col-md-3').append(
-                $('<div>').addClass('category-card card h-100').append(
-                    // Add demo image
-                    $('<img>')
-                        .addClass('card-img-top')
-                        .attr({
-                            'src': 'static/images/demo.webp',
-                            'alt': category.title
-                        })
-                        .css({
-                            'height': '200px',
-                            'object-fit': 'cover'
-                        }),
-                    $('<div>').addClass('card-body text-center').append(
-                        $('<h5>')
-                            .addClass('card-title mb-3')
+                $('<div>')
+                    .addClass('product-card')
+                    .attr('data-category-id', category.category_id)
+                    .css('cursor', 'pointer')
+                    .append(
+                        // Image wrapper with favorite icon
+                        $('<div>').addClass('product-image-wrapper').append(
+                            $('<img>')
+                                .addClass('product-image')
+                                .attr({
+                                    'src': category.image_url || 'static/images/demo.webp',
+                                    'alt': category.title
+                                }),
+                            $('<div>').addClass('favorite-icon').append(
+                                $('<i>').addClass('fas fa-heart')
+                            )
+                        ),
+                        // Product info
+                        $('<h3>')
+                            .addClass('product-title')
                             .text(category.title),
-                        $('<button>')
-                            .addClass('btn btn-primary view-items')
-                            .attr('data-category-id', category.category_id)
-                            .text('View Items')
+                        $('<p>')
+                            .addClass('product-description')
+                            .text(category.description || 'תיאור המוצר'),
+                        // Price section
+                        $('<div>').addClass('price-section').append(
+                            $('<div>').addClass('original-price').append(
+                                $('<span>').addClass('currency').text('₪'),
+                                $('<span>').addClass('amount').text(category.price || '125')
+                            ),
+                            $('<div>').addClass('discounted-price').append(
+                                $('<span>').text('מחיר מועדון: '),
+                                $('<span>').addClass('currency').text('₪'),
+                                $('<span>').addClass('amount').text('94')
+                            )
+                        )
                     )
-                )
+                    .on('click', function() {
+                        const categoryId = $(this).data('category-id');
+                        loadItems(categoryId);
+                    })
             );
             row.append(col);
         });
@@ -156,15 +175,12 @@ $(document).ready(function() {
         items.forEach(item => {
             const card = $(`
                 <div class="col-md-4 mb-4">
-                    <div class="card h-100">
+                    <div class="card h-100 item-card" data-item-api-id="${item.id}" role="button">
                         ${item.image_url ? 
                             `<img src="${item.image_url}" class="card-img-top" alt="${item.title}">` 
                             : ''}
                         <div class="card-body">
                             <h5 class="card-title">${item.title}</h5>
-                            ${item.description_json ? 
-                                `<div class="card-text">${formatDescription(item.description_json)}</div>` 
-                                : ''}
                             <p class="card-text">
                                 <strong>Price: ${formatPrice(item.price)}</strong>
                             </p>
@@ -172,7 +188,153 @@ $(document).ready(function() {
                     </div>
                 </div>
             `);
+
+            // Add click handler
+            card.find('.item-card').on('click', function(e) {
+                e.preventDefault();
+                const itemApiId = $(this).data('item-api-id');
+                showLoading();
+                loadItemDetails(itemApiId);
+            });
+
             container.append(card);
+        });
+    }
+
+    // Format description preview (shortened version)
+    function formatDescriptionPreview(descriptionJson) {
+        try {
+            const desc = JSON.parse(descriptionJson);
+            if (desc.description && desc.description.length > 0) {
+                return desc.description[0].substring(0, 100) + '...';
+            }
+            return '';
+        } catch (e) {
+            return '';
+        }
+    }
+
+    // Show product details in modal
+    function showProductDetails(item) {
+        $('#productModal').remove();
+        
+        const modalHtml = `
+            <div class="modal fade" id="productModal" tabindex="-1" dir="rtl">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header bg-primary text-white">
+                            <h5 class="modal-title fw-bold">${item.title}</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <div class="product-images">
+                                        ${item.images && item.images.length > 0 ? `
+                                            <div class="main-image mb-3">
+                                                <img src="${item.images[0]}" class="img-fluid rounded shadow" alt="${item.title}">
+                                            </div>
+                                            ${item.images.length > 1 ? `
+                                                <div class="image-thumbnails row g-2">
+                                                    ${item.images.map(img => `
+                                                        <div class="col-3">
+                                                            <img src="${img}" class="img-thumbnail cursor-pointer" 
+                                                                onclick="document.querySelector('.main-image img').src='${img}'">
+                                                        </div>
+                                                    `).join('')}
+                                                </div>
+                                            ` : ''}
+                                        ` : ''}
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="product-info">
+                                        ${item.sub_title ? `<p class="text-muted mb-3">${item.sub_title}</p>` : ''}
+                                        <div class="price-section mb-4">
+                                            <h3 class="text-primary mb-2">מחיר: ${formatPrice(item.price)}</h3>
+                                            ${item.warrenty_info ? `
+                                                <div class="warranty-info">
+                                                    <i class="fas fa-shield-alt"></i>
+                                                    <span>${item.warrenty_info}</span>
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                        ${item.brief ? `
+                                            <div class="brief-section mb-4">
+                                                <h6 class="fw-bold">תיאור מוצר:</h6>
+                                                <div class="brief-content">${item.brief}</div>
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            ${item.features && Object.keys(item.features).length > 0 ? `
+                                <div class="features-section mt-4">
+                                    <h6 class="fw-bold mb-3">מפרט טכני:</h6>
+                                    ${formatFeatures(item.features)}
+                                </div>
+                            ` : ''}
+                            
+                            ${item.delivery_info ? `
+                                <div class="delivery-section mt-4">
+                                    <h6 class="fw-bold mb-3">מידע על משלוח:</h6>
+                                    <div class="delivery-content">${item.delivery_info}</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        $('body').append(modalHtml);
+        const modal = new bootstrap.Modal('#productModal');
+        modal.show();
+    }
+
+    // Format full description
+    function formatFullDescription(descriptionJson) {
+        try {
+            const desc = JSON.parse(descriptionJson);
+            let html = '<div class="product-description">';
+            
+            if (desc.description && desc.description.length > 0) {
+                html += '<h5>Description</h5><ul>';
+                desc.description.forEach(item => {
+                    html += `<li>${item}</li>`;
+                });
+                html += '</ul>';
+            }
+            
+            html += '</div>';
+            return html;
+        } catch (e) {
+            return '';
+        }
+    }
+
+    // Load item details
+    function loadItemDetails(itemApiId) {
+        $.ajax({
+            url: 'ajax/ajax.php',
+            type: 'GET',
+            data: {
+                action: 'getItemDetails',
+                itemApiId: itemApiId
+            },
+            success: function(response) {
+                hideLoading();
+                if (response.success) {
+                    showProductDetails(response.data);
+                } else {
+                    showError(response.message || 'Failed to load item details');
+                }
+            },
+            error: function(xhr, status, error) {
+                hideLoading();
+                showError('Error loading item details: ' + error);
+            }
         });
     }
 
@@ -189,4 +351,83 @@ $(document).ready(function() {
 
     // Initialize
     loadCategories();
+
+    // Format description for display
+    function formatDescription(description) {
+        if (!description) return '';
+        
+        let html = '<div class="product-description">';
+        
+        // Add main description if exists
+        if (description.description) {
+            if (typeof description.description === 'string') {
+                html += description.description;
+            } else if (Array.isArray(description.description)) {
+                html += description.description.join('<br>');
+            }
+        }
+        
+        // Add delivery info if exists
+        if (description.delivery_info) {
+            html += '<div class="delivery-info mt-3">';
+            html += '<h6>Delivery Information:</h6>';
+            html += description.delivery_info;
+            html += '</div>';
+        }
+        
+        html += '</div>';
+        return html;
+    }
+
+    // Format features for display
+    function formatFeatures(features) {
+        if (!features || Object.keys(features).length === 0) return '';
+        
+        const translations = {
+            'colors': 'צבעים',
+            'features': 'מאפיינים',
+            'dimensions': 'מידות',
+            'technical': 'מפרט טכני'
+            // Add more translations as needed
+        };
+        
+        let html = '<div class="features-container">';
+        
+        Object.entries(features).forEach(([category, items]) => {
+            if (items && Object.keys(items).length > 0) {
+                const translatedCategory = translations[category] || category;
+                html += `<div class="feature-category">`;
+                html += `<h6 class="fw-bold">${translatedCategory}</h6>`;
+                html += `<div class="feature-items">`;
+                
+                if (Array.isArray(items)) {
+                    items.forEach(item => {
+                        html += `<div class="feature-item">${item}</div>`;
+                    });
+                } else {
+                    Object.entries(items).forEach(([key, value]) => {
+                        html += `<div class="feature-item"><strong>${key}:</strong> ${value}</div>`;
+                    });
+                }
+                
+                html += `</div></div>`;
+            }
+        });
+        
+        html += '</div>';
+        return html;
+    }
+
+    $(document).on('click', '.dropdown-item', function(e) {
+        e.preventDefault();
+        const categoryId = $(this).data('category-id');
+        if (categoryId) {
+            loadItems(categoryId);
+        }
+    });
+
+    $(document).on('click', '.favorite-icon', function(e) {
+        e.stopPropagation();
+        $(this).toggleClass('active');
+    });
 });

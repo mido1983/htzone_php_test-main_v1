@@ -356,4 +356,41 @@ class HtzoneApi {
             throw $e;
         }
     }
+
+    public function getItemDetails($itemId) {
+        try {
+            // Get features
+            $featuresStmt = $this->db->prepare('
+                SELECT feature_key, feature_value 
+                FROM item_features 
+                WHERE item_id = ?
+            ');
+            $featuresStmt->bind_param('i', $itemId);
+            $featuresStmt->execute();
+            $featuresResult = $featuresStmt->get_result();
+            $features = $featuresResult->fetch_all(MYSQLI_ASSOC);
+            $featuresStmt->close();
+
+            // Get images
+            $imagesStmt = $this->db->prepare('
+                SELECT img_url, sort_order 
+                FROM item_images 
+                WHERE item_id = ? 
+                ORDER BY sort_order
+            ');
+            $imagesStmt->bind_param('i', $itemId);
+            $imagesStmt->execute();
+            $imagesResult = $imagesStmt->get_result();
+            $images = $imagesResult->fetch_all(MYSQLI_ASSOC);
+            $imagesStmt->close();
+
+            return [
+                'features' => $features,
+                'images' => $images
+            ];
+        } catch (Exception $e) {
+            error_log("Error getting item details: " . $e->getMessage());
+            throw $e;
+        }
+    }
 }

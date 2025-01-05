@@ -1,5 +1,6 @@
 <?php
 require_once '../class/HtzoneApi.php';
+require_once '../class/Item.php';
 
 header('Content-Type: application/json');
 
@@ -34,6 +35,21 @@ try {
             echo json_encode([
                 'success' => true,
                 'data' => $allItems
+            ]);
+            break;
+            
+        case 'getItemDetails':
+            $itemApiId = isset($_GET['itemApiId']) ? $_GET['itemApiId'] : null;
+            if (!$itemApiId) {
+                throw new Exception('Item API ID is required');
+            }
+            
+            $item = new Item();
+            $details = $item->getItemDetails($itemApiId);
+            
+            echo json_encode([
+                'success' => true,
+                'data' => $details
             ]);
             break;
             
