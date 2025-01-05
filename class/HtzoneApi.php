@@ -140,8 +140,8 @@ class HtzoneApi {
                 return 0;
             }
 
-            // If data is a single item (not an array of items), wrap it in an array
-            if (isset($items['data']['id']) && !isset($items['data'][0])) {
+            // If data is a single item, wrap it in an array
+            if (isset($items['data']['id'])) {
                 $items['data'] = [$items['data']];
             }
 
@@ -150,7 +150,7 @@ class HtzoneApi {
                 INSERT INTO items 
                 (item_api_id, category_id, active, title, sub_title, 
                  brand_title, price, price_before_discount, brief, description_json) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE 
                 category_id = VALUES(category_id),
                 active = VALUES(active),
@@ -204,15 +204,15 @@ class HtzoneApi {
                     if ($stmt->execute()) {
                         $successCount++;
                         error_log("Successfully inserted item {$itemApiId}: {$title}");
-
+                        
                         // Get the inserted/updated item_id
                         $itemId = $stmt->insert_id ?: $this->getItemIdByApiId($itemApiId);
-
-                        // Store images if available
-                        if (isset($item['images']) && is_array($item['images'])) {
-                            $this->storeItemImages($itemId, $item['images']);
+                        
+                        // Store images
+                        if (isset($item['img_arr']) && !empty($item['img_arr'])) {
+                            $this->storeItemImages($itemId, $item['img_arr']);
                         }
-
+                        
                         // Store features if available
                         if (isset($item['features']) && is_array($item['features'])) {
                             $this->storeItemFeatures($itemId, $item['features']);
@@ -247,32 +247,42 @@ class HtzoneApi {
 
     private function storeItemImages($itemId, $images) {
         try {
+            // First delete existing images
+            $deleteStmt = $this->db->prepare('DELETE FROM item_images WHERE item_id = ?');
+            $deleteStmt->bind_param('i', $itemId);
+            $deleteStmt->execute();
+            $deleteStmt->close();
+
+            // Then insert new images
             $stmt = $this->db->prepare('
                 INSERT INTO item_images (item_id, img_url, sort_order) 
                 VALUES (?, ?, ?)
             ');
             
-            foreach ($images as $index => $imageUrl) {
-                // Store values in variables first
-                $imgUrl = (string)$imageUrl;
-                $sortOrder = (int)$index;
-                
-                // Bind parameters using variables
-                $stmt->bind_param('isi', 
-                    $itemId, 
-                    $imgUrl,
-                    $sortOrder
-                );
-                
-                if (!$stmt->execute()) {
-                    error_log("Error storing image: " . $stmt->error);
+            // Handle both array formats: indexed and associative
+            if (isset($images[1]) || isset($images['1'])) {
+                // Format: [1 => url1, 2 => url2, ...]
+                foreach ($images as $index => $imageUrl) {
+                    $sortOrder = (int)$index - 1; // Convert 1-based to 0-based index
+                    $stmt->bind_param('isi', $itemId, $imageUrl, $sortOrder);
+                    if (!$stmt->execute()) {
+                        error_log("Error storing image: " . $stmt->error);
+                    }
+                }
+            } else {
+                // Format: simple array of URLs
+                foreach ($images as $index => $imageUrl) {
+                    $sortOrder = (int)$index;
+                    $stmt->bind_param('isi', $itemId, $imageUrl, $sortOrder);
+                    if (!$stmt->execute()) {
+                        error_log("Error storing image: " . $stmt->error);
+                    }
                 }
             }
             
             $stmt->close();
         } catch (Exception $e) {
             error_log("Error in storeItemImages: " . $e->getMessage());
-            // Continue execution even if image storage fails
         }
     }
 
@@ -311,19 +321,67 @@ class HtzoneApi {
 
     public function getItems($categoryId) {
         try {
-            // Get items from API
-            $items = $this->makeApiRequest("/items/{$categoryId}");
+            // Get items from API first
+            $apiResponse = $this->makeApiRequest("/items/{$categoryId}");
+            error_log("API Response for category {$categoryId}: " . json_encode($apiResponse));
+
+            if (!empty($apiResponse['data'])) {
+                // Store items in database
+                $storedCount = $this->storeItems($apiResponse, $categoryId);
+                error_log("Stored {$storedCount} items for category {$categoryId}");
+            }
+
+            // Get items from database with images
+            $items = $this->getItemsFromDatabase($categoryId);
             
-            // Store items in database
-            $storedCount = $this->storeItems($items, $categoryId);
-            error_log("Stored {$storedCount} items for category {$categoryId}");
+            if (empty($items)) {
+                // Try sub-category endpoint if main endpoint returned no results
+                $subCategoryResponse = $this->makeApiRequest("/sub_category/{$categoryId}");
+                error_log("Sub-category API Response: " . json_encode($subCategoryResponse));
+                
+                if (!empty($subCategoryResponse['data'])) {
+                    $storedCount = $this->storeItems($subCategoryResponse, $categoryId);
+                    error_log("Stored {$storedCount} items from sub-category");
+                    $items = $this->getItemsFromDatabase($categoryId);
+                }
+            }
+
+            return $items;
             
-            return [
-                'api_data' => $items,
-                'stored_count' => $storedCount
-            ];
         } catch (Exception $e) {
-            error_log("Item fetch/store error: " . $e->getMessage());
+            error_log("Error getting items: " . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    private function getItemsFromDatabase($categoryId) {
+        try {
+            $stmt = $this->db->prepare('
+                SELECT DISTINCT i.*, im.img_url 
+                FROM items i
+                LEFT JOIN item_images im ON i.item_id = im.item_id 
+                WHERE i.category_id = ? 
+                AND (im.sort_order = 0 OR im.sort_order IS NULL)
+            ');
+            
+            $stmt->bind_param('i', $categoryId);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            
+            $items = [];
+            while ($row = $result->fetch_assoc()) {
+                $items[] = [
+                    'id' => $row['item_api_id'],
+                    'title' => $row['title'],
+                    'price' => $row['price'],
+                    'image_url' => $row['img_url'] ?: 'static/images/no-image.webp'
+                ];
+            }
+            
+            error_log("Found " . count($items) . " items in database for category {$categoryId}");
+            return $items;
+        } catch (Exception $e) {
+            error_log("Database error in getItemsFromDatabase: " . $e->getMessage());
             throw $e;
         }
     }
@@ -357,37 +415,73 @@ class HtzoneApi {
         }
     }
 
-    public function getItemDetails($itemId) {
+    public function getItemDetails($itemApiId) {
         try {
-            // Get features
-            $featuresStmt = $this->db->prepare('
-                SELECT feature_key, feature_value 
-                FROM item_features 
-                WHERE item_id = ?
+            // First try to get data from API
+            try {
+                $apiResponse = $this->makeApiRequest("/item/{$itemApiId}");
+                if (!empty($apiResponse['data'])) {
+                    // Store item in database
+                    $this->storeItems(['data' => [$apiResponse['data']]], $apiResponse['data']['category_id']);
+                }
+            } catch (Exception $e) {
+                error_log("API request failed, trying database: " . $e->getMessage());
+            }
+
+            // Get data from database
+            $itemStmt = $this->db->prepare('
+                SELECT item_id, title, price, brief, description_json, brand_title, sub_title
+                FROM items 
+                WHERE item_api_id = ?
             ');
-            $featuresStmt->bind_param('i', $itemId);
-            $featuresStmt->execute();
-            $featuresResult = $featuresStmt->get_result();
-            $features = $featuresResult->fetch_all(MYSQLI_ASSOC);
-            $featuresStmt->close();
+            
+            $itemStmt->bind_param('s', $itemApiId);
+            $itemStmt->execute();
+            $itemResult = $itemStmt->get_result();
+            $item = $itemResult->fetch_assoc();
+            $itemStmt->close();
+
+            if (!$item) {
+                throw new Exception("Item not found");
+            }
 
             // Get images
             $imagesStmt = $this->db->prepare('
-                SELECT img_url, sort_order 
+                SELECT img_url
                 FROM item_images 
                 WHERE item_id = ? 
                 ORDER BY sort_order
             ');
-            $imagesStmt->bind_param('i', $itemId);
+            
+            $imagesStmt->bind_param('i', $item['item_id']);
             $imagesStmt->execute();
             $imagesResult = $imagesStmt->get_result();
-            $images = $imagesResult->fetch_all(MYSQLI_ASSOC);
+            $images = [];
+            while ($row = $imagesResult->fetch_assoc()) {
+                $images[] = $row['img_url'];
+            }
             $imagesStmt->close();
 
-            return [
-                'features' => $features,
+            // Prepare response
+            $response = [
+                'title' => $item['title'],
+                'sub_title' => $item['sub_title'],
+                'brand_title' => $item['brand_title'],
+                'price' => $item['price'],
+                'brief' => $item['brief'],
                 'images' => $images
             ];
+
+            // Add description data if exists
+            if ($item['description_json']) {
+                $description = json_decode($item['description_json'], true);
+                if ($description) {
+                    $response = array_merge($response, $description);
+                }
+            }
+
+            return $response;
+
         } catch (Exception $e) {
             error_log("Error getting item details: " . $e->getMessage());
             throw $e;

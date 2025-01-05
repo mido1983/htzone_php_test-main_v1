@@ -8,14 +8,9 @@
 body {
     font-family: Arial, sans-serif;
     line-height: 1.6;
-    padding: 20px;
     direction: rtl;
 }
 
-.container {
-    max-width: 1200px;
-    margin: 0 auto;
-}
 
 /* Header */
 header {
@@ -563,16 +558,48 @@ button:hover {
 
 .product-image-wrapper {
     position: relative;
-    margin-bottom: 15px;
-    aspect-ratio: 1;
+    padding-bottom: 100%; /* 1:1 Aspect Ratio */
+    height: 0;
     overflow: hidden;
     border-radius: 8px;
+    background-color: #f8f9fa;
 }
 
 .product-image {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain; /* Changed from cover to contain */
+    object-position: center;
+    transition: transform 0.3s ease;
+    padding: 10px; /* Add some padding around the image */
+}
+
+/* No Image Placeholder */
+.product-image[src*="no-image"] {
+    object-fit: contain;
+    padding: 2rem;
+    background-color: #f8f9fa;
+    opacity: 0.7;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .product-image-wrapper {
+        padding-bottom: 75%; /* 4:3 Aspect Ratio on mobile */
+    }
+    
+    .product-image[src*="no-image"] {
+        padding: 1rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .product-image-wrapper {
+        padding-bottom: 66.67%; /* 3:2 Aspect Ratio on small mobile */
+    }
 }
 
 .favorite-icon {
@@ -703,4 +730,54 @@ button:hover {
 
 .favorite-icon.active i {
     transform: scale(1.1);
+}
+
+/* Items Grid Styles */
+#items-container .product-card {
+    margin-bottom: 20px;
+    cursor: pointer;
+}
+
+#items-container .product-image-wrapper {
+    position: relative;
+    padding-bottom: 100%; /* 1:1 Aspect Ratio */
+    height: 0;
+    overflow: hidden;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+#items-container .product-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+#items-container .product-card:hover .product-image {
+    transform: scale(1.05);
+}
+
+#items-container .product-title {
+    font-size: 16px;
+    margin-bottom: 10px;
+    line-height: 1.4;
+    max-height: 2.8em;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+/* Back button styling */
+#back-to-categories {
+    padding: 8px 16px;
+    font-size: 14px;
+}
+
+#back-to-categories i {
+    margin-left: 8px;
 }

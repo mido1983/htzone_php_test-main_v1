@@ -18,24 +18,28 @@ try {
             break;
             
         case 'getItems':
-            $categoryId = isset($_GET['categoryId']) ? (int)$_GET['categoryId'] : 0;
+            $categoryId = $_GET['categoryId'] ?? null;
             if (!$categoryId) {
-                throw new Exception('Category ID is required');
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Category ID is required'
+                ]);
+                exit;
             }
-            
-            $items = $api->getItems($categoryId);
-            $subCategory = $api->getSubCategory($categoryId);
-            
-            // Combine items from both responses
-            $allItems = array_merge(
-                isset($items['api_data']['data']) && is_array($items['api_data']['data']) ? $items['api_data']['data'] : [],
-                isset($subCategory['api_data']['data']) && is_array($subCategory['api_data']['data']) ? $subCategory['api_data']['data'] : []
-            );
-            
-            echo json_encode([
-                'success' => true,
-                'data' => $allItems
-            ]);
+
+            try {
+                $items = $api->getItems($categoryId);
+                echo json_encode([
+                    'success' => true,
+                    'data' => $items
+                ]);
+            } catch (Exception $e) {
+                error_log("Error in getItems: " . $e->getMessage());
+                echo json_encode([
+                    'success' => false,
+                    'message' => $e->getMessage()
+                ]);
+            }
             break;
             
         case 'getItemDetails':

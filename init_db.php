@@ -1,17 +1,26 @@
 <?php
-require_once 'class/HtzoneApi.php';
+require_once 'class/Database.php';
 
 try {
-    $api = new HtzoneApi();
+    // Get database connection
+    $db = Database::getInstance()->getConnection();
     
-    // Initialize database tables
-    $api->initDatabase();
+    // Read and execute SQL file
+    $sql = file_get_contents('helpers/db.sql');
     
-    // Fetch and store initial data
-    $api->fetchAndStoreCategories();
-    $api->fetchAndStoreItems();
+    // Split SQL file into individual queries
+    $queries = array_filter(array_map('trim', explode(';', $sql)));
+    
+    foreach ($queries as $query) {
+        if (!empty($query)) {
+            if (!$db->query($query)) {
+                throw new Exception("Error executing query: " . $db->error);
+            }
+        }
+    }
     
     echo "Database initialized successfully!\n";
+    
 } catch (Exception $e) {
-    echo "Error initializing database: " . $e->getMessage() . "\n";
+    die("Error initializing database: " . $e->getMessage() . "\n");
 } 

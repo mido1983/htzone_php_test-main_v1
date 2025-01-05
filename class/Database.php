@@ -14,6 +14,7 @@ class Database {
             error_log("User: root");
             error_log("Database: htzone_php_test-main_v1");
             
+            // TO_DO: create .env file and use it, create PDO connection 
             $this->conn = new mysqli(
                 'localhost',     // host
                 'root',         // username

@@ -173,17 +173,25 @@ $(document).ready(function() {
         container.empty();
 
         items.forEach(item => {
+            const imageUrl = item.image_url || 'static/images/no-image.svg';
             const card = $(`
                 <div class="col-md-4 mb-4">
-                    <div class="card h-100 item-card" data-item-api-id="${item.id}" role="button">
-                        ${item.image_url ? 
-                            `<img src="${item.image_url}" class="card-img-top" alt="${item.title}">` 
-                            : ''}
-                        <div class="card-body">
-                            <h5 class="card-title">${item.title}</h5>
-                            <p class="card-text">
-                                <strong>Price: ${formatPrice(item.price)}</strong>
-                            </p>
+                    <div class="product-card item-card" data-item-api-id="${item.id}">
+                        <div class="product-image-wrapper">
+                            <img src="${imageUrl}" 
+                                 class="product-image" 
+                                 alt="${item.title}"
+                                 onerror="this.src='static/images/no-image.svg'">
+                            <div class="favorite-icon">
+                                <i class="fas fa-heart"></i>
+                            </div>
+                        </div>
+                        <h3 class="product-title">${item.title}</h3>
+                        <div class="price-section">
+                            <div class="original-price">
+                                <span class="currency">₪</span>
+                                <span class="amount">${item.price}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -191,10 +199,11 @@ $(document).ready(function() {
 
             // Add click handler
             card.find('.item-card').on('click', function(e) {
-                e.preventDefault();
-                const itemApiId = $(this).data('item-api-id');
-                showLoading();
-                loadItemDetails(itemApiId);
+                if (!$(e.target).closest('.favorite-icon').length) {
+                    const itemApiId = $(this).data('item-api-id');
+                    showLoading();
+                    loadItemDetails(itemApiId);
+                }
             });
 
             container.append(card);
