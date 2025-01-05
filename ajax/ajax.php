@@ -1,76 +1,49 @@
 <?php
-require_once '../class/Database.php';
-require_once '../class/Item.php';
-require_once '../class/Category.php';
+require_once '../class/HtzoneApi.php';
 
 header('Content-Type: application/json');
 
-$response = [
-    'status' => 'error',
-    'message' => '',
-    'data' => null
-];
-
-if (!isset($_POST['act'])) {
-    $response['message'] = 'No action specified';
-    echo json_encode($response);
-    exit;
-}
-
-$item = new Item();
-$category = new Category();
-
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
-switch ($_POST['act']) {
-    case 'getItems':
-        try {
-            $page = isset($_POST['page']) ? (int)$_POST['page'] : 1;
-            $limit = isset($_POST['limit']) ? (int)$_POST['limit'] : 10;
-            $filters = [
-                'category' => $_POST['category'] ?? '',
-                'price_min' => $_POST['price_min'] ?? '',
-                'price_max' => $_POST['price_max'] ?? '',
-                'brand' => $_POST['brand'] ?? ''
-            ];
-            
-            $sort = [
-                'field' => $_POST['sort_field'] ?? 'name',
-                'direction' => $_POST['sort_direction'] ?? 'ASC'
-            ];
-
-            $data = $item->getItems($page, $limit, $filters, $sort);
-            $response['status'] = 'success';
-            $response['data'] = $data;
-        } catch (Exception $e) {
-            $response['status'] = 'error';
-            $response['message'] = $e->getMessage();
-        }
-        break;
-
-    case 'getCategories':
-        $data = $category->getCategories();
-        $response['status'] = 'success';
-        $response['data'] = $data;
-        break;
-
-    case 'getCarouselItems':
-        $category_id = isset($_POST['category_id']) ? (int)$_POST['category_id'] : 0;
-        $limit = isset($_POST['limit']) ? (int)$_POST['limit'] : 10;
-        
-        if ($category_id <= 0) {
-            $response['message'] = 'Invalid category ID';
+try {
+    $api = new HtzoneApi();
+    $action = $_GET['action'] ?? '';
+    
+    switch ($action) {
+        case 'getCategories':
+            $result = $api->getCategories();
+            echo json_encode([
+                'success' => true,
+                'data' => $result['api_data']['data']
+            ]);
             break;
-        }
-        
-        $data = $item->getCarouselItems($category_id, $limit);
-        $response['status'] = 'success';
-        $response['data'] = $data;
-        break;
-
-    default:
-        $response['message'] = 'Invalid action';
+            
+        case 'getItems':
+            $categoryId = isset($_GET['categoryId']) ? (int)$_GET['categoryId'] : 0;
+            if (!$categoryId) {
+                throw new Exception('Category ID is required');
+            }
+            
+            $items = $api->getItems($categoryId);
+            $subCategory = $api->getSubCategory($categoryId);
+            
+            // Combine items from both responses
+            $allItems = array_merge(
+                isset($items['api_data']['data']) && is_array($items['api_data']['data']) ? $items['api_data']['data'] : [],
+                isset($subCategory['api_data']['data']) && is_array($subCategory['api_data']['data']) ? $subCategory['api_data']['data'] : []
+            );
+            
+            echo json_encode([
+                'success' => true,
+                'data' => $allItems
+            ]);
+            break;
+            
+        default:
+            throw new Exception('Invalid action');
+    }
+    
+} catch (Exception $e) {
+    echo json_encode([
+        'success' => false,
+        'message' => $e->getMessage()
+    ]);
 }
-
-echo json_encode($response);

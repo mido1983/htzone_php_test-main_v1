@@ -1,174 +1,192 @@
-let currentPage = 1;
-const itemsPerPage = 10;
-let isLoading = false;
-let hasMoreItems = true;
-
-//Example for getItems, you are allowed to change it if needed.
-function get_items(options = {}, append = false) {
-    if (isLoading || (!append && !hasMoreItems)) return;
-    
-    isLoading = true;
-    $('#loading-indicator').show();
-    
-    const params = {
-        act: 'getItems',
-        page: append ? currentPage : 1,
-        limit: itemsPerPage,
-        category: options.category || '',
-        price_min: options.price_min || '',
-        price_max: options.price_max || '',
-        brand: options.brand || '',
-        sort_field: options.sort_field || 'name',
-        sort_direction: options.sort_direction || 'ASC'
-    };
-    
-    $.ajax({
-        url: 'ajax/ajax.php',
-        method: 'POST',
-        data: params,
-        dataType: 'json',
-        success: function(response) {
-            if (response.status === 'success') {
-                if (!append) {
-                    $('#product-list').empty();
-                    currentPage = 1;
-                }
-                
-                response.data.items.forEach(function(item) {
-                    $('#product-list').append(
-                        $('<div>').addClass('product-item').append(
-                            $('<img>').addClass('product-image')
-                                .attr('src', item.image_url)
-                                .attr('alt', item.name),
-                            $('<h3>').text(item.name),
-                            $('<p>').addClass('brand').text(item.brand),
-                            $('<p>').addClass('price').text('$' + item.price.toFixed(2)),
-                        )
-                    );
-                });
-                
-                hasMoreItems = response.data.items.length === itemsPerPage;
-                if (hasMoreItems) currentPage++;
-            } else {
-                console.error('Error fetching items:', response.message);
-            }
-        },
-        error: function(jqXHR, textStatus, errorThrown) {
-            console.error('AJAX error:', textStatus, errorThrown);
-        },
-        complete: function() {
-            isLoading = false;
-            $('#loading-indicator').hide();
-        }
-    });
-}
-
-// Carousel functionality
-function loadCarousel(carouselId, categoryId) {
-    $.ajax({
-        url: 'ajax/ajax.php',
-        method: 'POST',
-        data: {
-            act: 'getCarouselItems',
-            category_id: categoryId,
-            limit: 10
-        },
-        success: function(response) {
-            if (response.status === 'success') {
-                const items = response.data;
-                const carouselInner = $(`#${carouselId} .carousel-inner`);
-                carouselInner.empty();
-                
-                // Group items into slides (4 items per slide)
-                for (let i = 0; i < items.length; i += 4) {
-                    const slideItems = items.slice(i, i + 4);
-                    const isActive = i === 0 ? 'active' : '';
-                    
-                    const slide = $('<div>', {
-                        class: `carousel-item ${isActive}`
-                    });
-                    
-                    const row = $('<div>', {
-                        class: 'row'
-                    });
-                    
-                    slideItems.forEach(item => {
-                        const col = $('<div>', {
-                            class: 'col-md-3'
-                        }).append(
-                            $('<div>', {
-                                class: 'card h-100'
-                            }).append(
-                                $('<img>', {
-                                    src: item.image_url,
-                                    class: 'card-img-top',
-                                    alt: item.name
-                                }),
-                                $('<div>', {
-                                    class: 'card-body'
-                                }).append(
-                                    $('<h5>', {
-                                        class: 'card-title',
-                                        text: item.name
-                                    }),
-                                    $('<p>', {
-                                        class: 'card-text brand',
-                                        text: item.brand
-                                    }),
-                                    $('<p>', {
-                                        class: 'card-text price',
-                                        text: `$${parseFloat(item.price).toFixed(2)}`
-                                    })
-                                )
-                            )
-                        );
-                        row.append(col);
-                    });
-                    
-                    slide.append(row);
-                    carouselInner.append(slide);
-                }
-            }
-        },
-        error: function(xhr, status, error) {
-            console.error('Error loading carousel:', error);
-        }
-    });
-}
-
 $(document).ready(function() {
-    get_items();
+    // Category groups configuration
+    const carouselGroups = {
+        carousel1: [1580, 1818, 3151, 3153, 1554, 2639, 1519, 2181, 1887, 3935, 4257, 2362],
+        carousel2: [1042, 2210, 1043, 3671, 3674],
+        carousel3: [2624, 2626, 2625, 2881, 2127, 2273, 2182, 2164, 2417, 2131, 2618, 2638, 5905, 6224, 2620],
+        carousel4: [2969, 2970, 2972, 2385, 2598, 2328, 1262, 3389, 2793, 4876, 1616]
+    };
 
-    $(window).scroll(function() {
-        if ($(window).scrollTop() + $(window).height() >= $(document).height() - 500) {
-            get_items({}, true);
-        }
-    });
-    
-    // Example filter handlers
-    $('#category-filter').on('change', function() {
-        get_items({ category: $(this).val() });
-    });
-    
-    $('#sort-select').on('change', function() {
-        const [field, direction] = $(this).val().split('-');
-        get_items({ 
-            sort_field: field, 
-            sort_direction: direction 
+    // Show/Hide loading indicator
+    function showLoading() {
+        $('#loading').removeClass('d-none');
+    }
+
+    function hideLoading() {
+        $('#loading').addClass('d-none');
+    }
+
+    // Error handling
+    function showError(message) {
+        $('#error-message').text(message).removeClass('d-none');
+    }
+
+    function hideError() {
+        $('#error-message').addClass('d-none');
+    }
+
+    // Format price
+    function formatPrice(price) {
+        return '₪' + parseFloat(price).toFixed(2);
+    }
+
+    // Load categories and organize them into carousels
+    function loadCategories() {
+        showLoading();
+        hideError();
+
+        $.ajax({
+            url: 'ajax/ajax.php',
+            type: 'GET',
+            data: { action: 'getCategories' },
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    organizeCarousels(response.data);
+                } else {
+                    showError(response.message || 'Failed to load categories');
+                }
+            },
+            error: function(xhr, status, error) {
+                showError('Error loading categories: ' + error);
+            },
+            complete: function() {
+                hideLoading();
+            }
         });
-    });
-    
-    // Price filter example
-    $('#price-filter').on('submit', function(e) {
-        e.preventDefault();
-        get_items({
-            price_min: $('#price-min').val(),
-            price_max: $('#price-max').val()
+    }
+
+    // Organize categories into carousel slides
+    function organizeCarousels(categories) {
+        Object.entries(carouselGroups).forEach(([carouselId, categoryIds]) => {
+            const carouselCategories = categories.filter(cat => categoryIds.includes(parseInt(cat.category_id)));
+            const slides = [];
+            
+            // Create slides with 4 categories each
+            for (let i = 0; i < carouselCategories.length; i += 4) {
+                const slideCategories = carouselCategories.slice(i, i + 4);
+                slides.push(createCarouselSlide(slideCategories));
+            }
+
+            // Add slides to carousel
+            const carouselInner = $(`#${carouselId} .carousel-inner`);
+            carouselInner.empty();
+            
+            slides.forEach((slide, index) => {
+                carouselInner.append(
+                    $('<div>')
+                        .addClass(`carousel-item ${index === 0 ? 'active' : ''}`)
+                        .append(slide)
+                );
+            });
         });
+    }
+
+    // Create a carousel slide with categories
+    function createCarouselSlide(categories) {
+        const row = $('<div>').addClass('row g-4');
+        
+        categories.forEach(category => {
+            const col = $('<div>').addClass('col-md-3').append(
+                $('<div>').addClass('category-card card h-100').append(
+                    // Add demo image
+                    $('<img>')
+                        .addClass('card-img-top')
+                        .attr({
+                            'src': 'static/images/demo.webp',
+                            'alt': category.title
+                        })
+                        .css({
+                            'height': '200px',
+                            'object-fit': 'cover'
+                        }),
+                    $('<div>').addClass('card-body text-center').append(
+                        $('<h5>')
+                            .addClass('card-title mb-3')
+                            .text(category.title),
+                        $('<button>')
+                            .addClass('btn btn-primary view-items')
+                            .attr('data-category-id', category.category_id)
+                            .text('View Items')
+                    )
+                )
+            );
+            row.append(col);
+        });
+
+        return row;
+    }
+
+    // Load and display items
+    function loadItems(categoryId) {
+        showLoading();
+        hideError();
+        
+        $.ajax({
+            url: 'ajax/ajax.php',
+            type: 'GET',
+            data: {
+                action: 'getItems',
+                categoryId: categoryId
+            },
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    displayItems(response.data);
+                    $('#carousels-section').addClass('d-none');
+                    $('#items-section').removeClass('d-none');
+                } else {
+                    showError(response.message || 'Failed to load items');
+                }
+            },
+            error: function(xhr, status, error) {
+                showError('Error loading items: ' + error);
+            },
+            complete: function() {
+                hideLoading();
+            }
+        });
+    }
+
+    // Display items in grid
+    function displayItems(items) {
+        const container = $('#items-container');
+        container.empty();
+
+        items.forEach(item => {
+            const card = $(`
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100">
+                        ${item.image_url ? 
+                            `<img src="${item.image_url}" class="card-img-top" alt="${item.title}">` 
+                            : ''}
+                        <div class="card-body">
+                            <h5 class="card-title">${item.title}</h5>
+                            ${item.description_json ? 
+                                `<div class="card-text">${formatDescription(item.description_json)}</div>` 
+                                : ''}
+                            <p class="card-text">
+                                <strong>Price: ${formatPrice(item.price)}</strong>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `);
+            container.append(card);
+        });
+    }
+
+    // Event handlers
+    $(document).on('click', '.view-items', function() {
+        const categoryId = $(this).data('category-id');
+        loadItems(categoryId);
     });
-    
-    // Load carousels with their respective category IDs
-    loadCarousel('carousel-1', 1); // Replace with actual category IDs
-    loadCarousel('carousel-2', 2);
-    loadCarousel('carousel-3', 3);
+
+    $('#back-to-categories').click(function() {
+        $('#items-section').addClass('d-none');
+        $('#carousels-section').removeClass('d-none');
+    });
+
+    // Initialize
+    loadCategories();
 });

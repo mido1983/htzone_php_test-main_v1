@@ -62,46 +62,51 @@ class HtzoneApi {
 
             $stmt = $this->db->prepare('
                 INSERT INTO categories 
-                (category_id, title, parent_title, parent_id, top_id, group_title, items_api_url, sub_category_api_url) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (category_id, parent_id, title, level, type_id) 
+                VALUES (?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE 
+                parent_id=VALUES(parent_id),
+                title=VALUES(title),
+                level=VALUES(level),
+                type_id=VALUES(type_id)
             ');
 
             $successCount = 0;
             foreach ($categories['data'] as $category) {
-                // Debug each category
-                error_log("Processing category: " . print_r($category, true));
-                
                 try {
-                    $stmt->bind_param('issiisss',
+                    // Calculate level based on parent_id
+                    $level = empty($category['parent_id']) ? 1 : 2;
+                    
+                    $stmt->bind_param('iisii',
                         $category['category_id'],
-                        $category['title'],
-                        $category['parent_title'],
                         $category['parent_id'],
-                        $category['top_id'],
-                        $category['group_title'],
-                        $category['items_api_url'],
-                        $category['sub_category_api_url']
+                        $category['title'],
+                        $level,
+                        $category['top_id']  // Using top_id as type_id
                     );
 
                     if ($stmt->execute()) {
                         $successCount++;
-                        error_log("Successfully inserted category ID: " . $category['category_id']);
+                        error_log(sprintf("Successfully inserted category #%d: %s", 
+                            $category['category_id'], 
+                            $category['title']
+                        ));
                     } else {
-                        error_log("Error inserting category: " . $stmt->error);
+                        error_log(sprintf("Error inserting category #%d: %s", 
+                            $category['category_id'], 
+                            $stmt->error
+                        ));
                     }
                 } catch (Exception $e) {
-                    error_log("Error processing category: " . $e->getMessage());
-                    error_log("Category data: " . print_r($category, true));
+                    error_log(sprintf(
+                        "Error processing category: %s. Data: %s",
+                        $e->getMessage(),
+                        json_encode($category, JSON_UNESCAPED_UNICODE)
+                    ));
                 }
             }
 
             $stmt->close();
-            
-            // Verify insertion
-            $result = $this->db->query("SELECT COUNT(*) as count FROM categories");
-            $count = $result->fetch_assoc()['count'];
-            error_log("Total categories in database after insertion: " . $count);
-            
             return $successCount;
         } catch (Exception $e) {
             error_log("Store categories error: " . $e->getMessage());
@@ -131,94 +136,176 @@ class HtzoneApi {
     public function storeItems($items, $categoryId) {
         try {
             if (!isset($items['data']) || !is_array($items['data'])) {
-                throw new Exception("Invalid items data format");
+                error_log("Invalid items data format: " . json_encode($items));
+                return 0;
             }
 
+            // If data is a single item (not an array of items), wrap it in an array
+            if (isset($items['data']['id']) && !isset($items['data'][0])) {
+                $items['data'] = [$items['data']];
+            }
+
+            // Update the SQL to match the table structure
             $stmt = $this->db->prepare('
                 INSERT INTO items 
-                (id, title, description, price, category_id, image_url) 
-                VALUES (?, ?, ?, ?, ?, ?)
+                (item_api_id, category_id, active, title, sub_title, 
+                 brand_title, price, price_before_discount, brief, description_json) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON))
                 ON DUPLICATE KEY UPDATE 
-                title=VALUES(title),
-                description=VALUES(description),
-                price=VALUES(price),
-                category_id=VALUES(category_id),
-                image_url=VALUES(image_url)
+                category_id = VALUES(category_id),
+                active = VALUES(active),
+                title = VALUES(title),
+                sub_title = VALUES(sub_title),
+                brand_title = VALUES(brand_title),
+                price = VALUES(price),
+                price_before_discount = VALUES(price_before_discount),
+                brief = VALUES(brief),
+                description_json = VALUES(description_json)
             ');
 
             $successCount = 0;
             foreach ($items['data'] as $index => $item) {
                 try {
-                    // Debug item data
-                    error_log("Processing item #{$index}: " . json_encode($item, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-                    
-                    // Validate required fields
-                    if (!isset($item['id']) || !isset($item['title'])) {
-                        error_log("Skipping item - missing required fields");
-                        continue;
-                    }
+                    error_log("Processing item: " . json_encode($item, JSON_UNESCAPED_UNICODE));
 
-                    // Store values in variables first
-                    $id = (int)$item['id'];
+                    // Prepare item data
+                    $itemApiId = (string)$item['id'];
+                    $active = 1;
                     $title = (string)$item['title'];
-                    
-                    // Handle description - convert array to string if needed
-                    $description = '';
-                    if (isset($item['description'])) {
-                        if (is_array($item['description'])) {
-                            // If description is an array, join its values
-                            $description = implode("\n", array_filter($item['description']));
-                        } else {
-                            $description = (string)$item['description'];
-                        }
-                    }
-                    
+                    $subTitle = isset($item['sub_title']) ? (string)$item['sub_title'] : null;
+                    $brandTitle = isset($item['brand']) ? (string)$item['brand'] : null;
                     $price = isset($item['price']) ? (float)$item['price'] : 0.0;
-                    $image = isset($item['image_url']) ? (string)$item['image_url'] : '';
+                    $priceBeforeDiscount = isset($item['price_before_discount']) ? (float)$item['price_before_discount'] : $price;
+                    $brief = isset($item['brief']) ? (string)$item['brief'] : null;
                     
-                    // Debug values
-                    error_log(sprintf(
-                        "Prepared values - ID: %d, Title: %s, Price: %.2f, Description length: %d",
-                        $id,
-                        $title,
-                        $price,
-                        strlen($description)
-                    ));
-                    
-                    $stmt->bind_param('issdis',
-                        $id,
-                        $title,
-                        $description,
-                        $price,
+                    // Prepare description JSON
+                    $descriptionData = [
+                        'description' => isset($item['description']) ? 
+                            (is_array($item['description']) ? $item['description'] : [$item['description']]) : [],
+                        'features' => isset($item['features']) ? $item['features'] : [],
+                        'delivery_info' => isset($item['delivery_info']) ? $item['delivery_info'] : []
+                    ];
+                    $descriptionJson = json_encode($descriptionData, JSON_UNESCAPED_UNICODE);
+
+                    error_log("Binding parameters for item {$itemApiId}");
+                    $stmt->bind_param('sissssddss',
+                        $itemApiId,
                         $categoryId,
-                        $image
+                        $active,
+                        $title,
+                        $subTitle,
+                        $brandTitle,
+                        $price,
+                        $priceBeforeDiscount,
+                        $brief,
+                        $descriptionJson
                     );
 
                     if ($stmt->execute()) {
                         $successCount++;
-                        error_log(sprintf("Successfully inserted item #%d: %s", $id, $title));
+                        error_log("Successfully inserted item {$itemApiId}: {$title}");
+
+                        // Get the inserted/updated item_id
+                        $itemId = $stmt->insert_id ?: $this->getItemIdByApiId($itemApiId);
+
+                        // Store images if available
+                        if (isset($item['images']) && is_array($item['images'])) {
+                            $this->storeItemImages($itemId, $item['images']);
+                        }
+
+                        // Store features if available
+                        if (isset($item['features']) && is_array($item['features'])) {
+                            $this->storeItemFeatures($itemId, $item['features']);
+                        }
                     } else {
-                        error_log(sprintf("Error inserting item #%d: %s", $id, $stmt->error));
+                        error_log("Error inserting item {$itemApiId}: " . $stmt->error);
                     }
                 } catch (Exception $e) {
-                    error_log(sprintf(
-                        "Error processing item #%d: %s. Data: %s",
-                        $index,
-                        $e->getMessage(),
-                        json_encode($item, JSON_UNESCAPED_UNICODE)
-                    ));
+                    error_log("Error processing item {$itemApiId}: " . $e->getMessage());
+                    error_log("Item data: " . json_encode($item, JSON_UNESCAPED_UNICODE));
                 }
             }
 
             $stmt->close();
-            
-            // Log final count
-            error_log(sprintf("Successfully stored %d items for category %d", $successCount, $categoryId));
-            
             return $successCount;
         } catch (Exception $e) {
             error_log("Store items error: " . $e->getMessage());
             throw $e;
+        }
+    }
+
+    // Helper function to get item_id by item_api_id
+    private function getItemIdByApiId($apiId) {
+        $stmt = $this->db->prepare('SELECT item_id FROM items WHERE item_api_id = ?');
+        $stmt->bind_param('s', $apiId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+        $stmt->close();
+        return $row ? $row['item_id'] : null;
+    }
+
+    private function storeItemImages($itemId, $images) {
+        try {
+            $stmt = $this->db->prepare('
+                INSERT INTO item_images (item_id, img_url, sort_order) 
+                VALUES (?, ?, ?)
+            ');
+            
+            foreach ($images as $index => $imageUrl) {
+                // Store values in variables first
+                $imgUrl = (string)$imageUrl;
+                $sortOrder = (int)$index;
+                
+                // Bind parameters using variables
+                $stmt->bind_param('isi', 
+                    $itemId, 
+                    $imgUrl,
+                    $sortOrder
+                );
+                
+                if (!$stmt->execute()) {
+                    error_log("Error storing image: " . $stmt->error);
+                }
+            }
+            
+            $stmt->close();
+        } catch (Exception $e) {
+            error_log("Error in storeItemImages: " . $e->getMessage());
+            // Continue execution even if image storage fails
+        }
+    }
+
+    private function storeItemFeatures($itemId, $features) {
+        try {
+            $stmt = $this->db->prepare('
+                INSERT INTO item_features (item_id, feature_key, feature_value) 
+                VALUES (?, ?, ?)
+            ');
+            
+            foreach ($features as $key => $value) {
+                // Store values in variables first
+                $featureKey = (string)$key;
+                $featureValue = is_array($value) ? 
+                    json_encode($value, JSON_UNESCAPED_UNICODE) : 
+                    (string)$value;
+                
+                // Bind parameters using variables
+                $stmt->bind_param('iss', 
+                    $itemId, 
+                    $featureKey,
+                    $featureValue
+                );
+                
+                if (!$stmt->execute()) {
+                    error_log("Error storing feature: " . $stmt->error);
+                }
+            }
+            
+            $stmt->close();
+        } catch (Exception $e) {
+            error_log("Error in storeItemFeatures: " . $e->getMessage());
+            // Continue execution even if feature storage fails
         }
     }
 
@@ -245,6 +332,16 @@ class HtzoneApi {
         try {
             // Get items from API
             $subCategory = $this->makeApiRequest("/sub_category/{$categoryId}");
+
+            // Check if we got a category instead of items
+            if (isset($subCategory['data']['id'])) {
+                // This is a single category response, not items
+                error_log("Sub-category endpoint returned category data instead of items");
+                return [
+                    'api_data' => ['data' => []],  // Return empty items array
+                    'stored_count' => 0
+                ];
+            }
 
             // Store items in database
             $storedCount = $this->storeItems($subCategory, $categoryId);
