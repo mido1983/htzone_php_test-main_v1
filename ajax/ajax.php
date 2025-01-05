@@ -20,25 +20,33 @@ if (!isset($_POST['act'])) {
 $item = new Item();
 $category = new Category();
 
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 switch ($_POST['act']) {
     case 'getItems':
-        $page = isset($_POST['page']) ? (int)$_POST['page'] : 1;
-        $limit = isset($_POST['limit']) ? (int)$_POST['limit'] : 10;
-        $filters = [
-            'category' => $_POST['category'] ?? '',
-            'price_min' => $_POST['price_min'] ?? '',
-            'price_max' => $_POST['price_max'] ?? '',
-            'brand' => $_POST['brand'] ?? ''
-        ];
-        
-        $sort = [
-            'field' => $_POST['sort_field'] ?? 'name',
-            'direction' => $_POST['sort_direction'] ?? 'ASC'
-        ];
+        try {
+            $page = isset($_POST['page']) ? (int)$_POST['page'] : 1;
+            $limit = isset($_POST['limit']) ? (int)$_POST['limit'] : 10;
+            $filters = [
+                'category' => $_POST['category'] ?? '',
+                'price_min' => $_POST['price_min'] ?? '',
+                'price_max' => $_POST['price_max'] ?? '',
+                'brand' => $_POST['brand'] ?? ''
+            ];
+            
+            $sort = [
+                'field' => $_POST['sort_field'] ?? 'name',
+                'direction' => $_POST['sort_direction'] ?? 'ASC'
+            ];
 
-        $data = $item->getItems($page, $limit, $filters, $sort);
-        $response['status'] = 'success';
-        $response['data'] = $data;
+            $data = $item->getItems($page, $limit, $filters, $sort);
+            $response['status'] = 'success';
+            $response['data'] = $data;
+        } catch (Exception $e) {
+            $response['status'] = 'error';
+            $response['message'] = $e->getMessage();
+        }
         break;
 
     case 'getCategories':

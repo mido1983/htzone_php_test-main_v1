@@ -1,3 +1,39 @@
+<?php
+require_once 'class/HtzoneApi.php';
+
+try {
+    $api = new HtzoneApi();
+    
+    // Get and store categories
+    echo "<h2>Fetching and storing categories...</h2>";
+    $categories = $api->getCategories();
+    
+    // Verify database storage
+    $db = Database::getInstance()->getConnection();
+    $result = $db->query("SELECT COUNT(*) as count FROM categories");
+    $count = $result->fetch_assoc()['count'];
+    
+    echo "<div style='background: #e8f5e9; padding: 10px; margin: 10px 0;'>";
+    echo "Successfully stored {$count} categories in database";
+    echo "</div>";
+    
+    // Debug output
+    echo "<pre>";
+    echo "<h3>Categories from API:</h3>";
+    print_r($categories);
+    echo "</pre>";
+    
+} catch (Exception $e) {
+    echo "<div style='color: red; padding: 20px; background: #ffebee; border: 1px solid #ffcdd2;'>";
+    echo "<h2>Error occurred:</h2>";
+    echo "<p>" . htmlspecialchars($e->getMessage()) . "</p>";
+    echo "<h3>Debug Information:</h3>";
+    echo "<pre>";
+    print_r(error_get_last());
+    echo "</pre>";
+    echo "</div>";
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
