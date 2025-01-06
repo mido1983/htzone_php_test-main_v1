@@ -415,76 +415,76 @@ class HtzoneApi {
         }
     }
 
-    public function getItemDetails($itemApiId) {
-        try {
-            // First try to get data from API
-            try {
-                $apiResponse = $this->makeApiRequest("/item/{$itemApiId}");
-                if (!empty($apiResponse['data'])) {
-                    // Store item in database
-                    $this->storeItems(['data' => [$apiResponse['data']]], $apiResponse['data']['category_id']);
-                }
-            } catch (Exception $e) {
-                error_log("API request failed, trying database: " . $e->getMessage());
-            }
+    // public function getItemDetails($itemApiId) {
+    //     try {
+    //         // First try to get data from API
+    //         try {
+    //             $apiResponse = $this->makeApiRequest("/item/{$itemApiId}");
+    //             if (!empty($apiResponse['data'])) {
+    //                 // Store item in database
+    //                 $this->storeItems(['data' => [$apiResponse['data']]], $apiResponse['data']['category_id']);
+    //             }
+    //         } catch (Exception $e) {
+    //             error_log("API request failed, trying database: " . $e->getMessage());
+    //         }
 
-            // Get data from database
-            $itemStmt = $this->db->prepare('
-                SELECT item_id, title, price, brief, description_json, brand_title, sub_title
-                FROM items 
-                WHERE item_api_id = ?
-            ');
+    //         // Get data from database
+    //         $itemStmt = $this->db->prepare('
+    //             SELECT item_id, title, price, brief, description_json, brand_title, sub_title
+    //             FROM items 
+    //             WHERE item_api_id = ?
+    //         ');
             
-            $itemStmt->bind_param('s', $itemApiId);
-            $itemStmt->execute();
-            $itemResult = $itemStmt->get_result();
-            $item = $itemResult->fetch_assoc();
-            $itemStmt->close();
+    //         $itemStmt->bind_param('s', $itemApiId);
+    //         $itemStmt->execute();
+    //         $itemResult = $itemStmt->get_result();
+    //         $item = $itemResult->fetch_assoc();
+    //         $itemStmt->close();
 
-            if (!$item) {
-                throw new Exception("Item not found");
-            }
+    //         if (!$item) {
+    //             throw new Exception("Item not found");
+    //         }
 
-            // Get images
-            $imagesStmt = $this->db->prepare('
-                SELECT img_url
-                FROM item_images 
-                WHERE item_id = ? 
-                ORDER BY sort_order
-            ');
+    //         // Get images
+    //         $imagesStmt = $this->db->prepare('
+    //             SELECT img_url
+    //             FROM item_images 
+    //             WHERE item_id = ? 
+    //             ORDER BY sort_order
+    //         ');
             
-            $imagesStmt->bind_param('i', $item['item_id']);
-            $imagesStmt->execute();
-            $imagesResult = $imagesStmt->get_result();
-            $images = [];
-            while ($row = $imagesResult->fetch_assoc()) {
-                $images[] = $row['img_url'];
-            }
-            $imagesStmt->close();
+    //         $imagesStmt->bind_param('i', $item['item_id']);
+    //         $imagesStmt->execute();
+    //         $imagesResult = $imagesStmt->get_result();
+    //         $images = [];
+    //         while ($row = $imagesResult->fetch_assoc()) {
+    //             $images[] = $row['img_url'];
+    //         }
+    //         $imagesStmt->close();
 
-            // Prepare response
-            $response = [
-                'title' => $item['title'],
-                'sub_title' => $item['sub_title'],
-                'brand_title' => $item['brand_title'],
-                'price' => $item['price'],
-                'brief' => $item['brief'],
-                'images' => $images
-            ];
+    //         // Prepare response
+    //         $response = [
+    //             'title' => $item['title'],
+    //             'sub_title' => $item['sub_title'],
+    //             'brand_title' => $item['brand_title'],
+    //             'price' => $item['price'],
+    //             'brief' => $item['brief'],
+    //             'images' => $images
+    //         ];
 
-            // Add description data if exists
-            if ($item['description_json']) {
-                $description = json_decode($item['description_json'], true);
-                if ($description) {
-                    $response = array_merge($response, $description);
-                }
-            }
+    //         // Add description data if exists
+    //         if ($item['description_json']) {
+    //             $description = json_decode($item['description_json'], true);
+    //             if ($description) {
+    //                 $response = array_merge($response, $description);
+    //             }
+    //         }
 
-            return $response;
+    //         return $response;
 
-        } catch (Exception $e) {
-            error_log("Error getting item details: " . $e->getMessage());
-            throw $e;
-        }
-    }
+    //     } catch (Exception $e) {
+    //         error_log("Error getting item details: " . $e->getMessage());
+    //         throw $e;
+    //     }
+    // }
 }
