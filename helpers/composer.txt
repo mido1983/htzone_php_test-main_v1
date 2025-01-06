@@ -1,0 +1,23 @@
+Composer (PHP's package manager)
+Install Composer:
+
+Download the Composer Windows Installer from https://getcomposer.org/download/
+Look for "Composer-Setup.exe" and download it
+Run the installer
+During installation, make sure to let it add PHP to your PATH if prompted
+
+Verify Installation:
+After installation, open a new PowerShell or Command Prompt window and run:
+```bash
+   composer --version
+```
+If Still Not Working:
+Make sure PHP is installed and in your PATH
+You might need to restart your terminal/PowerShell
+You might need to restart your computer
+Once Composer is Working:
+Then you can run:   
+```bash
+    composer install
+```
+This will install the dependencies defined in your composer.json file, including the vlucas/phpdotenv package that your Database class is using.
