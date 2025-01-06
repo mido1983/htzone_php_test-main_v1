@@ -1,0 +1,6 @@
+<svg width="400" height="400" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+    <rect width="400" height="400" fill="#f8f9fa"/>
+    <path d="M160 120v160h80V120h-80zm20 20h40v120h-40V140z" fill="#dee2e6"/>
+    <path d="M200 180c11.046 0 20 8.954 20 20s-8.954 20-20 20-20-8.954-20-20 8.954-20 20-20z" fill="#dee2e6"/>
+    <text x="200" y="260" font-family="Arial" font-size="16" fill="#6c757d" text-anchor="middle">תמונה לא זמינה</text>
+</svg> 

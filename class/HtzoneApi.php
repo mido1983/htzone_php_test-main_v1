@@ -7,7 +7,7 @@ class HtzoneApi {
         $this->categoryModel = new Category();
     }
     
-    private function makeApiRequest($endpoint) {
+    public function makeApiRequest($endpoint) {
         try {
             $url = $this->base_url . $endpoint;
             $ch = curl_init($url);
@@ -52,13 +52,22 @@ class HtzoneApi {
                 'parent_id' => $category['parent_id'],
                 'title' => $category['title'],
                 'level' => empty($category['parent_id']) ? 1 : 2,
-                'type_id' => $category['top_id']
+                'type_id' => $category['top_id'],
+                'parent_title' => $category['parent_title'],
+                'top_id' => $category['top_id'],
+                'group_title' => $category['group_title'],
+                'items_api_url' => $category['items_api_url'],
+                'sub_category_api_url' => $category['sub_category_api_url']
             ];
             
             $this->categoryModel->create($categoryData);
         }
         
         return $categories;
+    }
+    
+    public function getBaseUrl() {
+        return $this->base_url;
     }
     
     // Add other API-related methods here

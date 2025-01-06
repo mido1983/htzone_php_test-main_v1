@@ -4,8 +4,30 @@ require_once __DIR__ . '/CRUD.php';
 class Category extends CRUD {
     public function create($data) {
         $stmt = $this->db->prepare('
-            INSERT INTO categories (category_id, parent_id, title, level, type_id) 
-            VALUES (:category_id, :parent_id, :title, :level, :type_id)
+            INSERT INTO categories (
+                category_id, 
+                parent_id, 
+                title, 
+                level, 
+                type_id,
+                parent_title,
+                top_id,
+                group_title,
+                items_api_url,
+                sub_category_api_url
+            ) 
+            VALUES (
+                :category_id, 
+                :parent_id, 
+                :title, 
+                :level, 
+                :type_id,
+                :parent_title,
+                :top_id,
+                :group_title,
+                :items_api_url,
+                :sub_category_api_url
+            )
         ');
         
         return $stmt->execute([
@@ -13,7 +35,12 @@ class Category extends CRUD {
             ':parent_id' => $data['parent_id'],
             ':title' => $data['title'],
             ':level' => $data['level'],
-            ':type_id' => $data['type_id']
+            ':type_id' => $data['type_id'],
+            ':parent_title' => $data['parent_title'],
+            ':top_id' => $data['top_id'],
+            ':group_title' => $data['group_title'],
+            ':items_api_url' => $data['items_api_url'],
+            ':sub_category_api_url' => $data['sub_category_api_url']
         ]);
     }
     
@@ -29,22 +56,19 @@ class Category extends CRUD {
     }
     
     public function update($id, $data) {
-        $stmt = $this->db->prepare('
-            UPDATE categories 
-            SET parent_id = :parent_id,
-                title = :title,
-                level = :level,
-                type_id = :type_id
-            WHERE category_id = :id
-        ');
+        $sets = [];
+        $params = [];
+        foreach ($data as $key => $value) {
+            $sets[] = "`$key` = :$key";
+            $params[":$key"] = $value;
+        }
         
-        return $stmt->execute([
-            ':id' => $id,
-            ':parent_id' => $data['parent_id'],
-            ':title' => $data['title'],
-            ':level' => $data['level'],
-            ':type_id' => $data['type_id']
-        ]);
+        $sql = "UPDATE categories SET " . implode(', ', $sets) . 
+               " WHERE category_id = :id";
+        $params[':id'] = $id;
+        
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute($params);
     }
     
     public function delete($id) {
@@ -64,5 +88,15 @@ class Category extends CRUD {
         
         $stmt->execute([':category_id' => $categoryId]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
+    public function truncate() {
+        $sql = "TRUNCATE TABLE categories";
+        $this->db->query($sql);
+    }
+    
+    public function getAllCategoryIds() {
+        $stmt = $this->db->query("SELECT category_id FROM categories");
+        return $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
     }
 }
