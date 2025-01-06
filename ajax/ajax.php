@@ -1,62 +1,35 @@
 <?php
+require_once __DIR__ . '/../vendor/autoload.php';
+require_once '../class/Database.php';
+require_once '../class/Category.php';
 require_once '../class/HtzoneApi.php';
-require_once '../class/Item.php';
 
 header('Content-Type: application/json');
 
 try {
-    $api = new HtzoneApi();
     $action = $_GET['action'] ?? '';
+    $category = new Category();
+    $api = new HtzoneApi();
     
     switch ($action) {
         case 'getCategories':
-            $result = $api->getCategories();
-            echo json_encode([
-                'success' => true,
-                'data' => $result['api_data']['data']
-            ]);
-            break;
-            
-        case 'getItems':
-            $categoryId = $_GET['categoryId'] ?? null;
-            if (!$categoryId) {
-                echo json_encode([
-                    'success' => false,
-                    'message' => 'Category ID is required'
-                ]);
-                exit;
-            }
-
+            // First try to fetch from API and store
             try {
-                $items = $api->getItems($categoryId);
-                echo json_encode([
-                    'success' => true,
-                    'data' => $items
-                ]);
+                $api->fetchAndStoreCategories();
             } catch (Exception $e) {
-                error_log("Error in getItems: " . $e->getMessage());
-                echo json_encode([
-                    'success' => false,
-                    'message' => $e->getMessage()
-                ]);
-            }
-            break;
-            
-        case 'getItemDetails':
-            $itemApiId = isset($_GET['itemApiId']) ? $_GET['itemApiId'] : null;
-            if (!$itemApiId) {
-                throw new Exception('Item API ID is required');
+                error_log("API fetch failed: " . $e->getMessage());
             }
             
-            $item = new Item();
-            $details = $item->getItemDetails($itemApiId);
-            
+            // Then return from database
+            $categories = $category->read();
             echo json_encode([
                 'success' => true,
-                'data' => $details
+                'data' => $categories
             ]);
             break;
             
+        // Add other cases here
+        
         default:
             throw new Exception('Invalid action');
     }
