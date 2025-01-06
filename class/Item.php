@@ -4,11 +4,11 @@ require_once __DIR__ . '/Database.php';
 class Item {
     private $db;
     private $api_base_url = 'https://storeapi.htzone.co.il/ext/O2zfcVu2t8gOB6nzSfFBu4joDYPH7s';
-
+    
     public function __construct() {
         $this->db = Database::getInstance()->getConnection();
     }
-
+    
     public function getItemDetails($itemApiId) {
         try {
             // First try to get from database
@@ -16,27 +16,10 @@ class Item {
             
             // If not found or data is old, fetch from API
             if (!$item || $this->isDataStale($item)) {
-                error_log("Fetching item {$itemApiId} from API");
                 $item = $this->getFromApi($itemApiId);
-            } else {
-                error_log("Using cached item {$itemApiId} from database");
             }
             
-            // Format the response
-            return [
-                'title' => $item['title'] ?? '',
-                'price' => $item['price'] ?? 0,
-                'description' => isset($item['description_json']) ? 
-                    json_decode($item['description_json'], true) : 
-                    ['description' => $item['description'] ?? []],
-                'images' => isset($item['img_arr']) ? array_values($item['img_arr']) : [],
-                'features' => $item['features'] ?? [],
-                'brand' => $item['brand'] ?? '',
-                'brief' => $item['brief'] ?? '',
-                'sub_title' => $item['sub_title'] ?? '',
-                'delivery_info' => $item['delivery_info'] ?? '',
-                'warrenty_info' => $item['warrenty_info'] ?? ''
-            ];
+            return $item;
         } catch (Exception $e) {
             error_log("Error getting item details: " . $e->getMessage());
             throw $e;
@@ -53,7 +36,6 @@ class Item {
             LEFT JOIN item_images im ON i.item_id = im.item_id
             WHERE i.item_api_id = ?
             GROUP BY i.item_id
-            LIMIT 1
         ');
         
         $stmt->bind_param('s', $itemApiId);
@@ -241,7 +223,7 @@ class Item {
             $deleteStmt->close();
 
             // Prepare insert statement
-            $stmt = $this->db->prepare('
+        $stmt = $this->db->prepare('
                 INSERT INTO item_images (item_id, img_url, sort_order) 
                 VALUES (?, ?, ?)
             ');
