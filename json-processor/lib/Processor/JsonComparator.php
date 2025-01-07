@@ -6,129 +6,184 @@ class JsonComparator extends BaseProcessor {
     private $data2;
     
     public function __construct($data1, $data2) {
-        $this->data1 = $data1;
-        $this->data2 = $data2;
+        $this->data1 = $this->normalizeData($data1);
+        $this->data2 = $this->normalizeData($data2);
     }
     
     public function suggestImprovements() {
         $suggestions = [];
         
-        // Check for structure differences
-        $structureDiff = $this->compareStructures();
-        if (!empty($structureDiff['data1_only']) || !empty($structureDiff['data2_only'])) {
+        // Analyze API Response Structure
+        $structureAnalysis = $this->analyzeApiStructure();
+        if (!empty($structureAnalysis)) {
             $suggestions[] = [
-                'type' => 'structure',
-                'message' => 'Different data structures detected',
-                'details' => [
-                    'missing_in_data2' => array_values($structureDiff['data1_only']),
-                    'missing_in_data1' => array_values($structureDiff['data2_only'])
-                ]
+                'type' => 'api_structure',
+                'message' => 'API Response Structure Improvements',
+                'details' => $structureAnalysis,
+                'example' => $this->generateImprovedApiExample()
             ];
         }
         
-        // Check for duplicate values in common fields
-        $commonFields = $structureDiff['common_fields'];
-        foreach ($commonFields as $field) {
-            $values1 = $this->extractValues($this->data1, $field);
-            $values2 = $this->extractValues($this->data2, $field);
-            
-            if ($this->hasDuplicateValues($values1)) {
-                $suggestions[] = [
-                    'type' => 'duplicates',
-                    'message' => "Duplicate values found for field '$field' in dataset 1",
-                    'dataset' => 1,
-                    'field' => $field
-                ];
-            }
-            
-            if ($this->hasDuplicateValues($values2)) {
-                $suggestions[] = [
-                    'type' => 'duplicates',
-                    'message' => "Duplicate values found for field '$field' in dataset 2",
-                    'dataset' => 2,
-                    'field' => $field
-                ];
-            }
-        }
-        
-        // Check key format consistency
-        $format1 = $this->detectKeyFormat($this->data1);
-        $format2 = $this->detectKeyFormat($this->data2);
-        
-        if ($format1 !== $format2 || $format1 === 'mixed' || $format2 === 'mixed') {
+        // Check for Consistent Field Naming
+        $namingIssues = $this->analyzeFieldNaming();
+        if (!empty($namingIssues)) {
             $suggestions[] = [
-                'type' => 'format',
-                'message' => 'Inconsistent key formats detected',
-                'formats' => [
-                    'dataset1' => $format1,
-                    'dataset2' => $format2
-                ]
+                'type' => 'field_naming',
+                'message' => 'Field Naming Consistency',
+                'details' => $namingIssues,
+                'example' => $this->generateConsistentNamingExample()
             ];
         }
         
-        // Check for null or empty values
-        $nullValues = $this->findNullValues($this->data1, $this->data2);
-        if (!empty($nullValues)) {
+        // Analyze Data Types and Formats
+        $dataTypeIssues = $this->analyzeDataTypes();
+        if (!empty($dataTypeIssues)) {
             $suggestions[] = [
-                'type' => 'null_values',
-                'message' => 'Null or empty values found in important fields',
-                'fields' => $nullValues
+                'type' => 'data_types',
+                'message' => 'Data Type Consistency',
+                'details' => $dataTypeIssues,
+                'example' => $this->generateConsistentDataTypesExample()
             ];
         }
         
         return $suggestions;
     }
     
-    private function extractValues($data, $field) {
-        if (!is_array($data)) {
-            return [];
+    private function normalizeData($data) {
+        if (isset($data['data'])) {
+            return $data['data'];
+        }
+        return $data;
+    }
+    
+    private function analyzeApiStructure() {
+        $analysis = [];
+        
+        // Compare categories and items structure
+        if (isset($this->data1[0]['category_id']) && isset($this->data2['category_id'])) {
+            $analysis[] = [
+                'issue' => 'Different Response Formats',
+                'description' => 'Categories endpoint returns an array while item endpoint returns a single object',
+                'recommendation' => 'Consider using consistent response formats with a data wrapper',
+                'current' => [
+                    'categories' => 'Array of category objects',
+                    'item' => 'Single item object'
+                ],
+                'suggested' => [
+                    'format' => [
+                        'data' => 'Object or Array',
+                        'meta' => [
+                            'total' => 'integer',
+                            'page' => 'integer',
+                            'per_page' => 'integer'
+                        ]
+                    ]
+                ]
+            ];
         }
         
-        $values = [];
-        if (isset($data[$field])) {
-            $values[] = $data[$field];
-        }
+        return $analysis;
+    }
+    
+    private function analyzeFieldNaming() {
+        $issues = [];
         
-        foreach ($data as $value) {
-            if (is_array($value)) {
-                $values = array_merge($values, $this->extractValues($value, $field));
+        // Check for inconsistent field naming
+        $fields = [
+            ['category_id', 'categoryId'],
+            ['parent_id', 'parentId'],
+            ['title_category', 'category_title'],
+            ['sub_category_api_url', 'subcategoryApiUrl']
+        ];
+        
+        foreach ($fields as $fieldVariations) {
+            $found = [];
+            foreach ($fieldVariations as $field) {
+                if ($this->findField($this->data1, $field) || $this->findField($this->data2, $field)) {
+                    $found[] = $field;
+                }
+            }
+            
+            if (count($found) > 1) {
+                $issues[] = [
+                    'issue' => 'Inconsistent Field Naming',
+                    'fields' => $found,
+                    'recommendation' => 'Use consistent naming convention (preferably snake_case)',
+                    'example' => $this->generateFieldExample($found[0])
+                ];
             }
         }
         
-        return $values;
+        return $issues;
     }
     
-    private function hasDuplicateValues($values) {
-        return count($values) !== count(array_unique($values));
-    }
-    
-    private function findNullValues($data1, $data2) {
-        $nullFields = [];
-        $importantFields = ['id', 'title', 'category_id', 'price'];
+    private function analyzeDataTypes() {
+        $issues = [];
         
-        foreach ($importantFields as $field) {
-            if ($this->hasNullOrEmpty($data1, $field)) {
-                $nullFields[] = ['field' => $field, 'dataset' => 1];
-            }
-            if ($this->hasNullOrEmpty($data2, $field)) {
-                $nullFields[] = ['field' => $field, 'dataset' => 2];
+        // Common fields to check
+        $fieldsToCheck = [
+            'price' => 'numeric',
+            'active' => 'boolean',
+            'category_id' => 'integer',
+            'expiration_date' => 'datetime'
+        ];
+        
+        foreach ($fieldsToCheck as $field => $expectedType) {
+            $value1 = $this->findFieldValue($this->data1, $field);
+            $value2 = $this->findFieldValue($this->data2, $field);
+            
+            if ($value1 !== null || $value2 !== null) {
+                $type1 = $this->getValueType($value1);
+                $type2 = $this->getValueType($value2);
+                
+                if ($type1 !== $type2 || $type1 !== $expectedType) {
+                    $issues[] = [
+                        'issue' => "Inconsistent Data Type for '$field'",
+                        'current' => [
+                            'api1' => $type1,
+                            'api2' => $type2
+                        ],
+                        'expected' => $expectedType,
+                        'recommendation' => "Standardize '$field' to use $expectedType type",
+                        'example' => $this->generateTypeExample($field, $expectedType)
+                    ];
+                }
             }
         }
         
-        return $nullFields;
+        return $issues;
     }
     
-    private function hasNullOrEmpty($data, $field) {
+    private function generateImprovedApiExample() {
+        return [
+            'data' => [
+                'id' => 'integer',
+                'category_id' => 'integer',
+                'title' => 'string',
+                'price' => 'decimal',
+                'active' => 'boolean',
+                'created_at' => 'datetime',
+                'updated_at' => 'datetime'
+            ],
+            'meta' => [
+                'total' => 'integer',
+                'page' => 'integer',
+                'per_page' => 'integer'
+            ]
+        ];
+    }
+    
+    private function findField($data, $field) {
         if (!is_array($data)) {
             return false;
         }
         
         if (isset($data[$field])) {
-            return $data[$field] === null || $data[$field] === '';
+            return true;
         }
         
         foreach ($data as $value) {
-            if (is_array($value) && $this->hasNullOrEmpty($value, $field)) {
+            if (is_array($value) && $this->findField($value, $field)) {
                 return true;
             }
         }
@@ -136,56 +191,122 @@ class JsonComparator extends BaseProcessor {
         return false;
     }
     
-    private function detectKeyFormat($data) {
+    private function findFieldValue($data, $field) {
         if (!is_array($data)) {
             return null;
         }
         
-        $camelCount = 0;
-        $snakeCount = 0;
+        if (isset($data[$field])) {
+            return $data[$field];
+        }
         
-        foreach ($data as $key => $value) {
-            if (strpos($key, '_') !== false) {
-                $snakeCount++;
-            } elseif (preg_match('/[A-Z]/', $key)) {
-                $camelCount++;
-            }
-            
+        foreach ($data as $value) {
             if (is_array($value)) {
-                $subFormat = $this->detectKeyFormat($value);
-                if ($subFormat === 'camel') $camelCount++;
-                if ($subFormat === 'snake') $snakeCount++;
+                $result = $this->findFieldValue($value, $field);
+                if ($result !== null) {
+                    return $result;
+                }
             }
         }
         
-        if ($camelCount > $snakeCount) return 'camel';
-        if ($snakeCount > $camelCount) return 'snake';
-        return 'mixed';
+        return null;
     }
     
-    private function extractFields($data, $prefix = '') {
-        $fields = [];
-        
-        foreach ($data as $key => $value) {
-            $fullKey = $prefix ? "$prefix.$key" : $key;
-            $fields[] = $fullKey;
-            
-            if (is_array($value)) {
-                $fields = array_merge($fields, $this->extractFields($value, $fullKey));
-            }
+    private function getValueType($value) {
+        if ($value === null) return 'null';
+        if (is_bool($value)) return 'boolean';
+        if (is_int($value)) return 'integer';
+        if (is_float($value)) return 'decimal';
+        if (is_string($value)) {
+            if (strtotime($value) !== false) return 'datetime';
+            return 'string';
         }
-        
-        return $fields;
+        return gettype($value);
     }
     
-    public function compareStructures() {
-        $fields1 = $this->extractFields($this->data1);
-        $fields2 = $this->extractFields($this->data2);
-        
+    private function generateFieldExample($field) {
         return [
-            'common_fields' => array_intersect($fields1, $fields2),
-            'data1_only' => array_diff($fields1, $fields2),
-            'data2_only' => array_diff($fields2, $fields1)
+            'current' => $field,
+            'suggested' => $this->toSnakeCase($field),
+            'example_response' => [
+                'data' => [
+                    $this->toSnakeCase($field) => 'value'
+                ]
+            ]
+        ];
+    }
+    
+    private function generateTypeExample($field, $type) {
+        $example = [
+            $field => null
+        ];
+        
+        switch ($type) {
+            case 'integer':
+                $example[$field] = 1;
+                break;
+            case 'decimal':
+                $example[$field] = 19.99;
+                break;
+            case 'boolean':
+                $example[$field] = true;
+                break;
+            case 'datetime':
+                $example[$field] = date('Y-m-d H:i:s');
+                break;
+            default:
+                $example[$field] = 'string value';
+        }
+        
+        return $example;
+    }
+    
+    private function toSnakeCase($input) {
+        return strtolower(preg_replace('/(?<!^)[A-Z]/', '_$0', $input));
+    }
+    
+    private function generateConsistentNamingExample() {
+        return [
+            'before' => [
+                'categoryId' => 1,
+                'parentId' => 2,
+                'titleCategory' => 'Example',
+                'subCategoryApiUrl' => '/api/subcategories/1'
+            ],
+            'after' => [
+                'category_id' => 1,
+                'parent_id' => 2,
+                'category_title' => 'Example',
+                'sub_category_api_url' => '/api/subcategories/1'
+            ],
+            'benefits' => [
+                'Consistent naming makes the API more predictable',
+                'Easier integration with different programming languages',
+                'Better readability and maintainability'
+            ]
+        ];
+    }
+    
+    private function generateConsistentDataTypesExample() {
+        return [
+            'before' => [
+                'price' => '19.99',          // string instead of decimal
+                'active' => '1',             // string instead of boolean
+                'category_id' => '123',      // string instead of integer
+                'expiration_date' => '1234567890' // timestamp instead of datetime
+            ],
+            'after' => [
+                'price' => 19.99,            // decimal
+                'active' => true,            // boolean
+                'category_id' => 123,        // integer
+                'expiration_date' => '2024-03-14 12:00:00' // formatted datetime
+            ],
+            'benefits' => [
+                'Consistent data types across all endpoints',
+                'Predictable data handling in client applications',
+                'Reduced type conversion overhead',
+                'Better validation and error handling'
+            ]
         ];
     }
 } 

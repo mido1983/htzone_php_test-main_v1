@@ -61,38 +61,61 @@ $(document).ready(function() {
     function displayImprovements(suggestions) {
         const $improvementsList = $('#improvementsList').empty();
         
-        // Group suggestions by type
-        const groupedSuggestions = suggestions.reduce((acc, suggestion) => {
-            if (!acc[suggestion.type]) {
-                acc[suggestion.type] = [];
+        suggestions.forEach(suggestion => {
+            const $card = $('<div>').addClass('card mb-3');
+            
+            // Card header
+            const $header = $('<div>').addClass('card-header bg-info text-white');
+            $header.append(`<h5 class="mb-0">${suggestion.message}</h5>`);
+            
+            // Card body
+            const $body = $('<div>').addClass('card-body');
+            
+            // Add details
+            if (suggestion.details) {
+                suggestion.details.forEach(detail => {
+                    const $detail = $('<div>').addClass('mb-3');
+                    $detail.append(`<h6 class="font-weight-bold">${detail.issue}</h6>`);
+                    $detail.append(`<p>${detail.description || ''}</p>`);
+                    
+                    if (detail.recommendation) {
+                        $detail.append(`
+                            <div class="alert alert-info">
+                                <strong>Recommendation:</strong> ${detail.recommendation}
+                            </div>
+                        `);
+                    }
+                    
+                    // Add example if available
+                    if (detail.example || suggestion.example) {
+                        const example = detail.example || suggestion.example;
+                        $detail.append(`
+                            <div class="example-code">
+                                <h6>Example:</h6>
+                                <pre class="bg-light p-2 rounded"><code>${JSON.stringify(example, null, 2)}</code></pre>
+                            </div>
+                        `);
+                    }
+                    
+                    $body.append($detail);
+                });
             }
-            acc[suggestion.type].push(suggestion);
-            return acc;
-        }, {});
-        
-        // Create improvement options
-        Object.entries(groupedSuggestions).forEach(([type, items]) => {
-            const $group = $('<div>').addClass('improvement-group mb-3');
             
-            // Create header based on type
-            const header = getImprovementHeader(type);
-            $group.append(`<h4 class="mb-2">${header}</h4>`);
-            
-            // Add individual suggestions
-            items.forEach(suggestion => {
-                const $option = $('<div>').addClass('improvement-option form-check');
-                $option.append(`
+            // Add checkbox for applying improvement
+            const $checkbox = $(`
+                <div class="form-check mt-3">
                     <input class="form-check-input" type="checkbox" 
                            name="improvements[]" value="${suggestion.type}" 
-                           id="check_${suggestion.type}_${suggestion.dataset || ''}">
-                    <label class="form-check-label" for="check_${suggestion.type}_${suggestion.dataset || ''}">
-                        ${getImprovementMessage(suggestion)}
+                           id="check_${suggestion.type}">
+                    <label class="form-check-label" for="check_${suggestion.type}">
+                        Apply this improvement
                     </label>
-                `);
-                $group.append($option);
-            });
+                </div>
+            `);
             
-            $improvementsList.append($group);
+            $body.append($checkbox);
+            $card.append($header, $body);
+            $improvementsList.append($card);
         });
         
         $('#improvements').show();
