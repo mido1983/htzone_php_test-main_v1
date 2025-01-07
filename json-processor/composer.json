@@ -1,0 +1,23 @@
+{
+    "name": "json-processor/app",
+    "description": "JSON Processing and Comparison Tool",
+    "type": "project",
+    "require": {
+        "php": ">=7.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "lib/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "mkdir -p logs"
+        ]
+    }
+} 

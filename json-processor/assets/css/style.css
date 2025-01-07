@@ -1,0 +1,16 @@
+.json-display {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 4px;
+    max-height: 500px;
+    overflow-y: auto;
+    font-family: monospace;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.json-display:empty {
+    display: none;
+}

@@ -1,0 +1,56 @@
+#!/usr/bin/env php
+<?php
+require_once __DIR__ . '/../vendor/autoload.php';
+
+use App\Bootstrap;
+use App\Processor\JsonProcessor;
+use App\Processor\JsonCleaner;
+use App\Util\JsonUtil;
+
+// Initialize the application
+Bootstrap::init();
+
+// Parse command line arguments
+$options = getopt('', ['file1:', 'file2:', 'format:', 'output:']);
+
+if (!isset($options['file1']) || !isset($options['file2'])) {
+    echo "Usage: process-json --file1=<path> --file2=<path> [--format=snake|camel] [--output=<path>]\n";
+    exit(1);
+}
+
+try {
+    // Read JSON files
+    $json1 = json_decode(file_get_contents($options['file1']), true);
+    $json2 = json_decode(file_get_contents($options['file2']), true);
+    
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        throw new Exception("Invalid JSON: " . json_last_error_msg());
+    }
+    
+    // Process JSON
+    $processor = new JsonProcessor();
+    $cleaner1 = new JsonCleaner($json1);
+    $cleaner2 = new JsonCleaner($json2);
+    
+    $format = $options['format'] ?? 'snake';
+    
+    $result1 = $cleaner1->formatKeys($format);
+    $result2 = $cleaner2->formatKeys($format);
+    
+    // Output results
+    $output = [
+        'file1' => $result1,
+        'file2' => $result2
+    ];
+    
+    if (isset($options['output'])) {
+        file_put_contents($options['output'], JsonUtil::prettyPrint($output));
+        echo "Results written to {$options['output']}\n";
+    } else {
+        echo JsonUtil::prettyPrint($output) . "\n";
+    }
+    
+} catch (Exception $e) {
+    echo "Error: " . $e->getMessage() . "\n";
+    exit(1);
+} 
