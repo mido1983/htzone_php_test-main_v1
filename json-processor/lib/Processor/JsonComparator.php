@@ -13,28 +13,49 @@ class JsonComparator extends BaseProcessor {
     public function suggestImprovements() {
         $suggestions = [];
         
-        // Check for duplicate records
-        if ($this->hasDuplicates($this->data1)) {
+        // Check for structure differences
+        $structureDiff = $this->compareStructures();
+        if (!empty($structureDiff['data1_only']) || !empty($structureDiff['data2_only'])) {
             $suggestions[] = [
-                'type' => 'duplicates',
-                'message' => 'Found duplicate records in first dataset',
-                'dataset' => 1
+                'type' => 'structure',
+                'message' => 'Different data structures detected',
+                'details' => [
+                    'missing_in_data2' => array_values($structureDiff['data1_only']),
+                    'missing_in_data1' => array_values($structureDiff['data2_only'])
+                ]
             ];
         }
         
-        if ($this->hasDuplicates($this->data2)) {
-            $suggestions[] = [
-                'type' => 'duplicates',
-                'message' => 'Found duplicate records in second dataset',
-                'dataset' => 2
-            ];
+        // Check for duplicate values in common fields
+        $commonFields = $structureDiff['common_fields'];
+        foreach ($commonFields as $field) {
+            $values1 = $this->extractValues($this->data1, $field);
+            $values2 = $this->extractValues($this->data2, $field);
+            
+            if ($this->hasDuplicateValues($values1)) {
+                $suggestions[] = [
+                    'type' => 'duplicates',
+                    'message' => "Duplicate values found for field '$field' in dataset 1",
+                    'dataset' => 1,
+                    'field' => $field
+                ];
+            }
+            
+            if ($this->hasDuplicateValues($values2)) {
+                $suggestions[] = [
+                    'type' => 'duplicates',
+                    'message' => "Duplicate values found for field '$field' in dataset 2",
+                    'dataset' => 2,
+                    'field' => $field
+                ];
+            }
         }
         
         // Check key format consistency
         $format1 = $this->detectKeyFormat($this->data1);
         $format2 = $this->detectKeyFormat($this->data2);
         
-        if ($format1 === 'mixed' || $format2 === 'mixed' || $format1 !== $format2) {
+        if ($format1 !== $format2 || $format1 === 'mixed' || $format2 === 'mixed') {
             $suggestions[] = [
                 'type' => 'format',
                 'message' => 'Inconsistent key formats detected',
@@ -45,25 +66,71 @@ class JsonComparator extends BaseProcessor {
             ];
         }
         
+        // Check for null or empty values
+        $nullValues = $this->findNullValues($this->data1, $this->data2);
+        if (!empty($nullValues)) {
+            $suggestions[] = [
+                'type' => 'null_values',
+                'message' => 'Null or empty values found in important fields',
+                'fields' => $nullValues
+            ];
+        }
+        
         return $suggestions;
     }
     
-    private function hasDuplicates($data) {
+    private function extractValues($data, $field) {
+        if (!is_array($data)) {
+            return [];
+        }
+        
+        $values = [];
+        if (isset($data[$field])) {
+            $values[] = $data[$field];
+        }
+        
+        foreach ($data as $value) {
+            if (is_array($value)) {
+                $values = array_merge($values, $this->extractValues($value, $field));
+            }
+        }
+        
+        return $values;
+    }
+    
+    private function hasDuplicateValues($values) {
+        return count($values) !== count(array_unique($values));
+    }
+    
+    private function findNullValues($data1, $data2) {
+        $nullFields = [];
+        $importantFields = ['id', 'title', 'category_id', 'price'];
+        
+        foreach ($importantFields as $field) {
+            if ($this->hasNullOrEmpty($data1, $field)) {
+                $nullFields[] = ['field' => $field, 'dataset' => 1];
+            }
+            if ($this->hasNullOrEmpty($data2, $field)) {
+                $nullFields[] = ['field' => $field, 'dataset' => 2];
+            }
+        }
+        
+        return $nullFields;
+    }
+    
+    private function hasNullOrEmpty($data, $field) {
         if (!is_array($data)) {
             return false;
         }
         
-        $seen = [];
-        foreach ($data as $item) {
-            if (!is_array($item)) {
-                continue;
-            }
-            
-            $hash = md5(json_encode($item));
-            if (isset($seen[$hash])) {
+        if (isset($data[$field])) {
+            return $data[$field] === null || $data[$field] === '';
+        }
+        
+        foreach ($data as $value) {
+            if (is_array($value) && $this->hasNullOrEmpty($value, $field)) {
                 return true;
             }
-            $seen[$hash] = true;
         }
         
         return false;
@@ -96,13 +163,6 @@ class JsonComparator extends BaseProcessor {
         return 'mixed';
     }
     
-    public function findCommonFields() {
-        $fields1 = $this->extractFields($this->data1);
-        $fields2 = $this->extractFields($this->data2);
-        
-        return array_intersect($fields1, $fields2);
-    }
-    
     private function extractFields($data, $prefix = '') {
         $fields = [];
         
@@ -119,10 +179,13 @@ class JsonComparator extends BaseProcessor {
     }
     
     public function compareStructures() {
+        $fields1 = $this->extractFields($this->data1);
+        $fields2 = $this->extractFields($this->data2);
+        
         return [
-            'common_fields' => $this->findCommonFields(),
-            'data1_only' => array_diff($this->extractFields($this->data1), $this->extractFields($this->data2)),
-            'data2_only' => array_diff($this->extractFields($this->data2), $this->extractFields($this->data1))
+            'common_fields' => array_intersect($fields1, $fields2),
+            'data1_only' => array_diff($fields1, $fields2),
+            'data2_only' => array_diff($fields2, $fields1)
         ];
     }
 } 

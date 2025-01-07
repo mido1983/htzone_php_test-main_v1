@@ -1,15 +1,20 @@
 $(document).ready(function() {
-    // Initialize tooltips
-    $('[data-toggle="tooltip"]').tooltip();
-
-    // Form submission
+    let currentData = null;
+    
     $('#jsonForm').on('submit', function(e) {
         e.preventDefault();
-        
+        processJsonData();
+    });
+    
+    $('#applyImprovements').on('click', function() {
+        applyImprovements();
+    });
+    
+    function processJsonData() {
         const url1 = $('#url1').val();
         const url2 = $('#url2').val();
         
-        // Show loading indicator
+        // Show loading
         $('.loading').css('display', 'flex');
         
         // Clear previous results
@@ -27,35 +32,98 @@ $(document).ready(function() {
             },
             success: function(response) {
                 if (response.success) {
-                    // Display JSON data
-                    $('#json1').text(JSON.stringify(response.data.original.data1, null, 2));
-                    $('#json2').text(JSON.stringify(response.data.original.data2, null, 2));
-                    
-                    // Show improvements section if suggestions exist
-                    if (response.data.analysis.data1.issues.length > 0 || 
-                        response.data.analysis.data2.issues.length > 0) {
-                        $('#improvements').show();
-                        
-                        // Update improvement checkboxes based on suggestions
-                        updateImprovementOptions(response.data.analysis);
-                    }
+                    currentData = response.data;
+                    displayResults(response.data);
                 } else {
                     showError(response.message);
                 }
             },
             error: function(xhr, status, error) {
-                showError('Error processing request: ' + error);
+                showError('Error: ' + error);
             },
             complete: function() {
                 $('.loading').hide();
             }
         });
-    });
+    }
     
-    // Apply improvements
-    $('#applyImprovements').on('click', function() {
-        const improvements = [];
+    function displayResults(data) {
+        // Display JSON data
+        $('#json1').text(JSON.stringify(data.original.data1, null, 2));
+        $('#json2').text(JSON.stringify(data.original.data2, null, 2));
         
+        // Handle improvements section
+        if (data.improvements && data.improvements.suggestions.length > 0) {
+            displayImprovements(data.improvements.suggestions);
+        }
+    }
+    
+    function displayImprovements(suggestions) {
+        const $improvementsList = $('#improvementsList').empty();
+        
+        // Group suggestions by type
+        const groupedSuggestions = suggestions.reduce((acc, suggestion) => {
+            if (!acc[suggestion.type]) {
+                acc[suggestion.type] = [];
+            }
+            acc[suggestion.type].push(suggestion);
+            return acc;
+        }, {});
+        
+        // Create improvement options
+        Object.entries(groupedSuggestions).forEach(([type, items]) => {
+            const $group = $('<div>').addClass('improvement-group mb-3');
+            
+            // Create header based on type
+            const header = getImprovementHeader(type);
+            $group.append(`<h4 class="mb-2">${header}</h4>`);
+            
+            // Add individual suggestions
+            items.forEach(suggestion => {
+                const $option = $('<div>').addClass('improvement-option form-check');
+                $option.append(`
+                    <input class="form-check-input" type="checkbox" 
+                           name="improvements[]" value="${suggestion.type}" 
+                           id="check_${suggestion.type}_${suggestion.dataset || ''}">
+                    <label class="form-check-label" for="check_${suggestion.type}_${suggestion.dataset || ''}">
+                        ${getImprovementMessage(suggestion)}
+                    </label>
+                `);
+                $group.append($option);
+            });
+            
+            $improvementsList.append($group);
+        });
+        
+        $('#improvements').show();
+    }
+    
+    function getImprovementHeader(type) {
+        switch (type) {
+            case 'duplicates':
+                return '🔄 Duplicate Records';
+            case 'format':
+                return '🔤 Key Format Inconsistencies';
+            default:
+                return type.charAt(0).toUpperCase() + type.slice(1);
+        }
+    }
+    
+    function getImprovementMessage(suggestion) {
+        switch (suggestion.type) {
+            case 'duplicates':
+                return `Found duplicate records in dataset ${suggestion.dataset}`;
+            case 'format':
+                return `Inconsistent key formats detected (${suggestion.formats.dataset1} vs ${suggestion.formats.dataset2})`;
+            default:
+                return suggestion.message;
+        }
+    }
+    
+    function applyImprovements() {
+        if (!currentData) return;
+        
+        const improvements = [];
         $('input[name="improvements[]"]:checked').each(function() {
             improvements.push($(this).val());
         });
@@ -78,6 +146,7 @@ $(document).ready(function() {
             },
             success: function(response) {
                 if (response.success) {
+                    currentData = response.data;
                     $('#json1').text(JSON.stringify(response.data.improvements.improved_data.data1, null, 2));
                     $('#json2').text(JSON.stringify(response.data.improvements.improved_data.data2, null, 2));
                 } else {
@@ -85,37 +154,18 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr, status, error) {
-                showError('Error applying improvements: ' + error);
+                showError('Error: ' + error);
             },
             complete: function() {
                 $('.loading').hide();
             }
         });
-    });
+    }
     
     function showError(message) {
         const errorDiv = $('<div>')
-            .addClass('error-message')
+            .addClass('alert alert-danger mt-3')
             .text(message);
         $('#jsonForm').after(errorDiv);
-    }
-    
-    function updateImprovementOptions(analysis) {
-        const $improvementsList = $('#improvementsList').empty();
-        
-        if (analysis.data1.issues.length > 0 || analysis.data2.issues.length > 0) {
-            const issues = [...new Set([...analysis.data1.issues, ...analysis.data2.issues])];
-            
-            issues.forEach(issue => {
-                const $option = $('<div>').addClass('improvement-option form-check');
-                $option.append(`
-                    <input class="form-check-input" type="checkbox" name="improvements[]" value="${issue.type}" id="check_${issue.type}">
-                    <label class="form-check-label" for="check_${issue.type}">
-                        ${issue.message}
-                    </label>
-                `);
-                $improvementsList.append($option);
-            });
-        }
     }
 }); 
